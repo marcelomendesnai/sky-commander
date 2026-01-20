@@ -1,14 +1,26 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { Header } from '@/components/Header';
+import { SettingsScreen } from '@/components/SettingsScreen';
+import { FlightSetupScreen } from '@/components/FlightSetupScreen';
+import { MetarScreen } from '@/components/MetarScreen';
+import { ChatScreen } from '@/components/ChatScreen';
+import { useApp } from '@/contexts/AppContext';
 
-const Index = () => {
+export default function Index() {
+  const { currentScreen } = useApp();
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background radar-grid relative">
+      {/* Scanline overlay */}
+      <div className="fixed inset-0 scanlines pointer-events-none z-50 opacity-10" />
+      
+      <Header />
+      
+      <main className="relative z-10">
+        {currentScreen === 'settings' && <SettingsScreen />}
+        {currentScreen === 'flight-setup' && <FlightSetupScreen />}
+        {currentScreen === 'metar' && <MetarScreen />}
+        {currentScreen === 'chat' && <ChatScreen />}
+      </main>
     </div>
   );
-};
-
-export default Index;
+}
