@@ -54,15 +54,30 @@ serve(async (req) => {
       const airportIcao = selectedFrequency.airport === 'departure' 
         ? flightData.departureIcao 
         : flightData.arrivalIcao;
+      
+      // Extract airport name from frequency name (e.g., "Solo Guarulhos" → "Guarulhos")
+      const airportName = selectedFrequency.name.replace(/^(ATIS|Solo|Torre|Aproximação|Decolagem|Controle|APP|GND|TWR|DEP|CLR|CTR)\s*/i, '').trim();
+      
       frequencyContext = `
 **Frequência Sintonizada pelo Piloto:**
-Aeroporto: ${airportIcao} (${selectedFrequency.airport === 'departure' ? 'Saída' : 'Destino'})
+Aeroporto: ${airportIcao} (${airportName}) - ${selectedFrequency.airport === 'departure' ? 'SAÍDA' : 'DESTINO'}
 Setor: ${selectedFrequency.frequencyType} (${selectedFrequency.frequency})
+Nome Completo: ${selectedFrequency.name}
 
-IMPORTANTE: O piloto está atualmente sintonizado em ${selectedFrequency.frequencyType}. 
-Se ele chamar um setor diferente do sintonizado (ex: chamar "Torre" quando está sintonizado em "Solo/GND"), 
-você deve estranhar educadamente e informar que ele está na frequência errada, como um ATC real faria.
-Exemplo: "Estação chamando Torre, você está na frequência do Solo, verifique sua frequência."`;
+VALIDAÇÃO CRÍTICA - VOCÊ DEVE VERIFICAR DUAS COISAS:
+
+1. **AEROPORTO CORRETO**: O piloto DEVE chamar o aeroporto onde está sintonizado (${airportName}/${airportIcao}).
+   - Se ele chamar OUTRO aeroporto (ex: chamar "Recife" quando está em "Guarulhos"), você deve responder:
+   "Estação chamando [aeroporto errado], você está na frequência de ${airportName}, verifique sua frequência."
+   
+2. **SETOR CORRETO**: O piloto DEVE chamar o setor sintonizado (${selectedFrequency.frequencyType}).
+   - Se ele chamar outro setor (ex: chamar "Torre" quando está em "Solo"), você deve responder:
+   "Estação chamando [setor errado], você está na frequência ${selectedFrequency.frequencyType === 'GND' ? 'do Solo' : selectedFrequency.frequencyType === 'TWR' ? 'da Torre' : 'de ' + selectedFrequency.frequencyType}, verifique sua frequência."
+
+EXEMPLOS DE ERROS:
+- Sintonizado: SBGR SOLO | Piloto diz: "Recife Solo" → ERRO! Aeroporto errado.
+- Sintonizado: SBGR SOLO | Piloto diz: "Guarulhos Torre" → ERRO! Setor errado.
+- Sintonizado: SBGR SOLO | Piloto diz: "Guarulhos Solo" → CORRETO!`;
     }
 
     // Build the full system prompt with flight context
