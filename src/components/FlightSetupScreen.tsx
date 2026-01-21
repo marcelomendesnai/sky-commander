@@ -24,20 +24,58 @@ const validateICAO = async (icao: string, avwxApiKey: string): Promise<boolean> 
   }
 };
 
-// Fetch complete airport data from AVWX
+// Fetch complete airport data from AVWX with fallback to static frequencies
 const fetchAirportData = async (icao: string, avwxApiKey: string): Promise<AirportData | null> => {
-  if (!avwxApiKey) return null;
+  // Import static frequencies
+  const { getAirportFrequencies } = await import('@/data/brazilianAirportFrequencies');
+  const staticFrequencies = getAirportFrequencies(icao);
+  
+  if (!avwxApiKey) {
+    // Return basic data with static frequencies if available
+    if (staticFrequencies) {
+      return {
+        icao: icao.toUpperCase(),
+        name: '',
+        city: '',
+        country: 'Brasil',
+        elevation: 0,
+        latitude: 0,
+        longitude: 0,
+        frequencies: staticFrequencies,
+        runways: [],
+        regionalInfo: 'Brasil - Espaço aéreo DECEA. Idioma: Português/Inglês.',
+      };
+    }
+    return null;
+  }
   
   try {
     const response = await fetch(`https://avwx.rest/api/station/${icao.toUpperCase()}`, {
       headers: { 'Authorization': `BEARER ${avwxApiKey}` }
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // API failed, try static frequencies
+      if (staticFrequencies) {
+        return {
+          icao: icao.toUpperCase(),
+          name: '',
+          city: '',
+          country: 'Brasil',
+          elevation: 0,
+          latitude: 0,
+          longitude: 0,
+          frequencies: staticFrequencies,
+          runways: [],
+          regionalInfo: 'Brasil - Espaço aéreo DECEA. Idioma: Português/Inglês.',
+        };
+      }
+      return null;
+    }
     const data = await response.json();
     
     // Parse frequencies from the station data
-    const frequencies = [];
-    if (data.freqs) {
+    let frequencies = [];
+    if (data.freqs && data.freqs.length > 0) {
       for (const freq of data.freqs) {
         frequencies.push({
           type: freq.type || 'UNKNOWN',
@@ -45,6 +83,11 @@ const fetchAirportData = async (icao: string, avwxApiKey: string): Promise<Airpo
           name: freq.name,
         });
       }
+    }
+    
+    // Fallback to static frequencies if API didn't return any
+    if (frequencies.length === 0 && staticFrequencies) {
+      frequencies = staticFrequencies;
     }
     
     // Parse runways
@@ -90,6 +133,21 @@ const fetchAirportData = async (icao: string, avwxApiKey: string): Promise<Airpo
       regionalInfo,
     };
   } catch {
+    // On error, try static frequencies
+    if (staticFrequencies) {
+      return {
+        icao: icao.toUpperCase(),
+        name: '',
+        city: '',
+        country: 'Brasil',
+        elevation: 0,
+        latitude: 0,
+        longitude: 0,
+        frequencies: staticFrequencies,
+        runways: [],
+        regionalInfo: 'Brasil - Espaço aéreo DECEA. Idioma: Português/Inglês.',
+      };
+    }
     return null;
   }
 };
