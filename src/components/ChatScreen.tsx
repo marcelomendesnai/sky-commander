@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, Radio, Brain, Loader2, AlertCircle, Volume2, VolumeX, RotateCcw, Clock } from 'lucide-react';
+import { Mic, MicOff, Send, Radio, Brain, Loader2, AlertCircle, Volume2, VolumeX, Clock } from 'lucide-react';
 import { AtcButton } from '@/components/ui/atc-button';
 import { useApp } from '@/contexts/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import type { ChatMessage, TalkingTo } from '@/types/flight';
+import type { ChatMessage, TalkingTo, SelectedFrequency } from '@/types/flight';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetarDisplay } from '@/components/metar/MetarDisplay';
 import { TafDisplay } from '@/components/metar/TafDisplay';
 import { AirportInfoDisplay } from '@/components/metar/AirportInfoDisplay';
 import { AircraftDataDisplay } from '@/components/metar/AircraftDataDisplay';
+import { FrequencySelector } from '@/components/FrequencySelector';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -142,6 +143,7 @@ export function ChatScreen() {
   const [isWaiting, setIsWaiting] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [selectedFrequency, setSelectedFrequency] = useState<SelectedFrequency | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -247,6 +249,7 @@ export function ChatScreen() {
           systemPrompt: settings.systemPrompt,
           anthropicApiKey: settings.anthropicApiKey,
           selectedModel: settings.selectedModel,
+          selectedFrequency: talkingTo === 'atc' ? selectedFrequency : null,
         }),
       });
 
@@ -409,9 +412,19 @@ export function ChatScreen() {
 
           {/* Input area */}
           <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
-            <div className="container mx-auto max-w-3xl">
+            <div className="container mx-auto max-w-3xl space-y-3">
+              {/* Frequency Selector - only when talking to ATC */}
+              {talkingTo === 'atc' && (
+                <FrequencySelector
+                  departureAirport={departureAirport}
+                  arrivalAirport={arrivalAirport}
+                  selectedFrequency={selectedFrequency}
+                  onChange={setSelectedFrequency}
+                />
+              )}
+
               {/* Talking To Toggle */}
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-muted-foreground">Falando com:</span>
                 <TalkingToToggle value={talkingTo} onChange={setTalkingTo} />
               </div>
