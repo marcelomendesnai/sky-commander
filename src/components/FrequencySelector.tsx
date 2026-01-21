@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Radio, Plane, PlaneLanding } from 'lucide-react';
 import type { AirportData, SelectedFrequency, FrequencyType } from '@/types/flight';
 import { DEPARTURE_FREQUENCY_ORDER, ARRIVAL_FREQUENCY_ORDER } from '@/types/flight';
@@ -39,7 +40,9 @@ export function FrequencySelector({
   selectedFrequency,
   onChange,
 }: FrequencySelectorProps) {
-  const selectedAirportType = selectedFrequency?.airport || 'departure';
+  // Internal state to track which airport is selected (independent of frequency selection)
+  const [selectedAirportType, setSelectedAirportType] = useState<'departure' | 'arrival'>('departure');
+  
   const currentAirport = selectedAirportType === 'departure' ? departureAirport : arrivalAirport;
   const frequencyOrder = selectedAirportType === 'departure' ? DEPARTURE_FREQUENCY_ORDER : ARRIVAL_FREQUENCY_ORDER;
 
@@ -62,8 +65,8 @@ export function FrequencySelector({
 
   const handleAirportChange = (airport: 'departure' | 'arrival') => {
     if (airport === selectedAirportType) return;
-    // Reset selection when changing airport
-    onChange(null);
+    setSelectedAirportType(airport); // Update internal state
+    onChange(null); // Reset frequency selection when changing airport
   };
 
   const handleFrequencySelect = (freqType: FrequencyType) => {
