@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import type { FlightData, MetarData, TafData, ChatMessage, Settings, AppScreen } from '@/types/flight';
+import type { FlightData, MetarData, TafData, ChatMessage, Settings, AppScreen, AirportData, LovableAIModel } from '@/types/flight';
+
+const DEFAULT_MODEL: LovableAIModel = 'google/gemini-3-flash-preview';
 
 const DEFAULT_PROMPT = `# ATC VIRTUAL
 
@@ -42,6 +44,12 @@ interface AppContextType {
   setArrivalMetar: (metar: MetarData | null) => void;
   setArrivalTaf: (taf: TafData | null) => void;
   
+  // Airport data
+  departureAirport: AirportData | null;
+  arrivalAirport: AirportData | null;
+  setDepartureAirport: (airport: AirportData | null) => void;
+  setArrivalAirport: (airport: AirportData | null) => void;
+  
   // Chat
   messages: ChatMessage[];
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
@@ -62,18 +70,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem('atc-virtual-settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // Ensure selectedModel has a default value
+        return { 
+          openaiApiKey: '', 
+          avwxApiKey: '', 
+          systemPrompt: DEFAULT_PROMPT,
+          selectedModel: DEFAULT_MODEL,
+          ...parsed 
+        };
       } catch {
-        return { openaiApiKey: '', avwxApiKey: '', systemPrompt: DEFAULT_PROMPT };
+        return { openaiApiKey: '', avwxApiKey: '', systemPrompt: DEFAULT_PROMPT, selectedModel: DEFAULT_MODEL };
       }
     }
-    return { openaiApiKey: '', avwxApiKey: '', systemPrompt: DEFAULT_PROMPT };
+    return { openaiApiKey: '', avwxApiKey: '', systemPrompt: DEFAULT_PROMPT, selectedModel: DEFAULT_MODEL };
   });
 
   const [flightData, setFlightData] = useState<FlightData | null>(null);
   const [departureMetar, setDepartureMetar] = useState<MetarData | null>(null);
   const [arrivalMetar, setArrivalMetar] = useState<MetarData | null>(null);
   const [arrivalTaf, setArrivalTaf] = useState<TafData | null>(null);
+  const [departureAirport, setDepartureAirport] = useState<AirportData | null>(null);
+  const [arrivalAirport, setArrivalAirport] = useState<AirportData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('flight-setup');
 
@@ -103,6 +121,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDepartureMetar(null);
     setArrivalMetar(null);
     setArrivalTaf(null);
+    setDepartureAirport(null);
+    setArrivalAirport(null);
     clearMessages();
     setCurrentScreen('flight-setup');
   }, [clearMessages]);
@@ -120,6 +140,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setDepartureMetar,
         setArrivalMetar,
         setArrivalTaf,
+        departureAirport,
+        arrivalAirport,
+        setDepartureAirport,
+        setArrivalAirport,
         messages,
         addMessage,
         clearMessages,

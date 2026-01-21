@@ -1,14 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, Radio, Brain, Loader2, AlertCircle } from 'lucide-react';
-import { AtcCard } from '@/components/ui/atc-card';
+import { Mic, MicOff, Send, Radio, Brain, Loader2, AlertCircle, Volume2, VolumeX, RotateCcw, Clock } from 'lucide-react';
 import { AtcButton } from '@/components/ui/atc-button';
-import { AtcInput } from '@/components/ui/atc-input';
 import { useApp } from '@/contexts/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import type { ChatMessage } from '@/types/flight';
+import type { ChatMessage, TalkingTo } from '@/types/flight';
 import { toast } from 'sonner';
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+function MessageBubble({ 
+  message, 
+  onPlayAudio,
+  isPlayingAudio 
+}: { 
+  message: ChatMessage;
+  onPlayAudio?: (text: string) => void;
+  isPlayingAudio?: boolean;
+}) {
   const isUser = message.role === 'user';
   const isATC = message.role === 'atc';
   const isEvaluator = message.role === 'evaluator';
@@ -34,6 +43,20 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               <>
                 <Radio className="w-3 h-3 text-atc-amber" />
                 <span className="text-atc-amber">ATC</span>
+                {onPlayAudio && (
+                  <button
+                    onClick={() => onPlayAudio(message.content)}
+                    disabled={isPlayingAudio}
+                    className="ml-2 p-1 rounded hover:bg-muted transition-colors disabled:opacity-50"
+                    title="Reproduzir áudio"
+                  >
+                    {isPlayingAudio ? (
+                      <Loader2 className="w-3 h-3 text-atc-amber animate-spin" />
+                    ) : (
+                      <Volume2 className="w-3 h-3 text-atc-amber" />
+                    )}
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -68,12 +91,54 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+function TalkingToToggle({ 
+  value, 
+  onChange 
+}: { 
+  value: TalkingTo; 
+  onChange: (value: TalkingTo) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+      <button
+        type="button"
+        onClick={() => onChange('atc')}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+          value === 'atc'
+            ? 'bg-atc-amber/20 text-atc-amber border border-atc-amber/30'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <Radio className="w-3.5 h-3.5" />
+        <span>ATC</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('evaluator')}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+          value === 'evaluator'
+            ? 'bg-atc-cyan/20 text-atc-cyan border border-atc-cyan/30'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <Brain className="w-3.5 h-3.5" />
+        <span>Avaliador</span>
+      </button>
+    </div>
+  );
+}
+
 export function ChatScreen() {
   const { messages, addMessage, flightData, settings, departureMetar, arrivalMetar, arrivalTaf } = useApp();
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [talkingTo, setTalkingTo] = useState<TalkingTo>('atc');
+  const [isWaiting, setIsWaiting] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -83,48 +148,133 @@ export function ChatScreen() {
     scrollToBottom();
   }, [messages]);
 
-  const processATCResponse = async (userMessage: string) => {
+  const playTTS = async (text: string) => {
+    if (!settings.elevenLabsApiKey || !audioEnabled) return;
+
+    setIsPlayingAudio(true);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/elevenlabs-tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({
+          text,
+          apiKey: settings.elevenLabsApiKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro no TTS');
+      }
+
+      const data = await response.json();
+      const audioUrl = `data:audio/mpeg;base64,${data.audioContent}`;
+      
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      
+      audio.onended = () => setIsPlayingAudio(false);
+      audio.onerror = () => {
+        setIsPlayingAudio(false);
+        toast.error('Erro ao reproduzir áudio');
+      };
+      
+      await audio.play();
+    } catch (error) {
+      console.error('TTS error:', error);
+      setIsPlayingAudio(false);
+      toast.error(error instanceof Error ? error.message : 'Erro no TTS');
+    }
+  };
+
+  const processATCResponse = async (userMessage: string, isResume = false) => {
     setIsLoading(true);
 
     try {
-      // Build context for the AI
+      // Build METAR context
       const metarContext = [
         departureMetar?.raw ? `METAR ${departureMetar.icao}: ${departureMetar.raw}` : '',
         arrivalMetar?.raw ? `METAR ${arrivalMetar.icao}: ${arrivalMetar.raw}` : '',
         arrivalTaf?.raw ? `TAF ${arrivalTaf.icao}: ${arrivalTaf.raw}` : '',
       ].filter(Boolean).join('\n');
 
-      const flightContext = flightData 
-        ? `Aeronave: ${flightData.aircraft}, Saída: ${flightData.departureIcao}, Chegada: ${flightData.arrivalIcao}, Tipo: ${flightData.flightType}, Modo: ${flightData.mode}`
-        : '';
-
-      // Build message history for context
-      const messageHistory = messages
+      // Build message history
+      const history = messages
         .filter(m => m.role !== 'system')
         .map(m => ({
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content,
         }));
 
-      // For now, we'll simulate a response since we don't have direct Claude API access
-      // In production, this would call an edge function with Claude
-      
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Prepare the message - if resuming, ask ATC to continue
+      const messageToSend = isResume 
+        ? '[SITUAÇÃO RESOLVIDA - ATC deve retomar contato como se o tráfego ou situação de espera tivesse passado]'
+        : userMessage;
 
-      // Parse the user message and generate appropriate response
-      const response = generateSimulatedResponse(userMessage, flightData, messages);
-      
-      // Add the response(s) to chat
-      if (response.atc) {
-        addMessage({ role: 'atc', content: response.atc });
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/atc-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({
+          message: messageToSend,
+          history,
+          flightData: flightData || {
+            aircraft: 'UNKNOWN',
+            departureIcao: 'XXXX',
+            arrivalIcao: 'XXXX',
+            flightType: 'VFR',
+            mode: 'TREINO',
+          },
+          metarContext,
+          talkingTo,
+          systemPrompt: settings.systemPrompt,
+          anthropicApiKey: settings.anthropicApiKey,
+          selectedModel: settings.selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao processar resposta');
       }
-      if (response.evaluator && flightData?.mode === 'TREINO') {
-        addMessage({ role: 'evaluator', content: response.evaluator });
+
+      const data = await response.json();
+
+      // Update waiting state
+      setIsWaiting(data.isWaiting || false);
+
+      // Add responses to chat
+      if (talkingTo === 'atc') {
+        if (data.atcResponse) {
+          addMessage({ role: 'atc', content: data.atcResponse });
+          // Auto-play TTS for ATC response
+          if (settings.elevenLabsApiKey && audioEnabled) {
+            await playTTS(data.atcResponse);
+          }
+        }
+        if (data.evaluatorResponse && flightData?.mode === 'TREINO') {
+          addMessage({ role: 'evaluator', content: data.evaluatorResponse });
+        }
+      } else {
+        if (data.evaluatorResponse) {
+          addMessage({ role: 'evaluator', content: data.evaluatorResponse });
+        }
       }
 
     } catch (error) {
-      toast.error('Erro ao processar resposta');
+      console.error('Chat error:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao processar resposta');
     } finally {
       setIsLoading(false);
     }
@@ -145,6 +295,12 @@ export function ChatScreen() {
     await processATCResponse(text);
   };
 
+  const handleATCResume = async () => {
+    setIsWaiting(false);
+    addMessage({ role: 'system', content: '⏳ Situação resolvida - ATC retomando contato...' });
+    await processATCResponse('', true);
+  };
+
   const { isRecording, isProcessing, error: voiceError, toggleRecording } = useVoiceInput({
     onTranscript: handleVoiceTranscript,
     apiKey: settings.openaiApiKey,
@@ -159,17 +315,54 @@ export function ChatScreen() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Audio controls header */}
+      {settings.elevenLabsApiKey && (
+        <div className="flex items-center justify-end px-4 py-2 border-b border-border bg-card/50">
+          <button
+            onClick={() => setAudioEnabled(!audioEnabled)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+              audioEnabled
+                ? 'bg-atc-green/20 text-atc-green'
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            {audioEnabled ? (
+              <>
+                <Volume2 className="w-4 h-4" />
+                <span>Áudio ON</span>
+              </>
+            ) : (
+              <>
+                <VolumeX className="w-4 h-4" />
+                <span>Áudio OFF</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="container mx-auto max-w-3xl">
           {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <MessageBubble 
+              key={message.id} 
+              message={message}
+              onPlayAudio={
+                message.role === 'atc' && settings.elevenLabsApiKey 
+                  ? playTTS 
+                  : undefined
+              }
+              isPlayingAudio={isPlayingAudio}
+            />
           ))}
           
           {isLoading && (
             <div className="flex items-center gap-3 text-muted-foreground animate-fade-in">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm font-mono">ATC processando...</span>
+              <span className="text-sm font-mono">
+                {talkingTo === 'atc' ? 'ATC processando...' : 'Avaliador processando...'}
+              </span>
             </div>
           )}
           
@@ -177,9 +370,31 @@ export function ChatScreen() {
         </div>
       </div>
 
+      {/* Waiting button */}
+      {isWaiting && !isLoading && (
+        <div className="px-4 py-3 border-t border-atc-amber/30 bg-atc-amber/10">
+          <div className="container mx-auto max-w-3xl">
+            <button
+              onClick={handleATCResume}
+              className="w-full flex items-center justify-center gap-3 py-3 rounded-lg bg-atc-amber/20 border border-atc-amber/40 text-atc-amber font-mono text-sm hover:bg-atc-amber/30 transition-colors animate-pulse"
+            >
+              <Clock className="w-5 h-5" />
+              <span>⏳ ATC ME CHAMA</span>
+              <span className="text-xs opacity-75">(clique quando situação resolver)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
         <div className="container mx-auto max-w-3xl">
+          {/* Talking To Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-mono text-muted-foreground">Falando com:</span>
+            <TalkingToToggle value={talkingTo} onChange={setTalkingTo} />
+          </div>
+
           {voiceError && (
             <div className="flex items-center gap-2 text-xs text-destructive mb-3">
               <AlertCircle className="w-4 h-4" />
@@ -213,7 +428,13 @@ export function ChatScreen() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isRecording ? 'Gravando...' : 'Digite sua comunicação...'}
+                placeholder={
+                  isRecording 
+                    ? 'Gravando...' 
+                    : talkingTo === 'atc'
+                    ? 'Digite sua comunicação para o ATC...'
+                    : 'Pergunte ao avaliador...'
+                }
                 disabled={isRecording || isLoading}
                 className="w-full h-11 px-4 rounded-md border border-border bg-input font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
               />
@@ -240,55 +461,4 @@ export function ChatScreen() {
       </div>
     </div>
   );
-}
-
-// Simulated response generator (placeholder for actual AI integration)
-function generateSimulatedResponse(
-  userMessage: string, 
-  flightData: any, 
-  messages: ChatMessage[]
-): { atc?: string; evaluator?: string } {
-  const lowerMessage = userMessage.toLowerCase();
-  const isFirstContact = messages.filter(m => m.role === 'user').length === 1;
-
-  // Basic pattern matching for demo purposes
-  if (isFirstContact || lowerMessage.includes('ground') || lowerMessage.includes('solo')) {
-    if (!lowerMessage.includes(flightData?.aircraft?.toLowerCase())) {
-      return {
-        atc: 'Station calling, say again your callsign.',
-        evaluator: `❌ Você não se identificou corretamente. Toda chamada deve incluir:\n1. Estação chamada\n2. Seu indicativo (${flightData?.aircraft})\n3. Sua posição/intenção\n\nRefaça a chamada.`,
-      };
-    }
-    
-    return {
-      atc: `${flightData?.aircraft}, ${flightData?.departureIcao} Ground, go ahead.`,
-      evaluator: '✅ Contato inicial estabelecido. Aguardando sua solicitação de táxi ou clearance.',
-    };
-  }
-
-  if (lowerMessage.includes('taxi') || lowerMessage.includes('táxi')) {
-    return {
-      atc: `${flightData?.aircraft}, taxi to holding point runway 09R via taxiway Alpha, Bravo. Hold short runway 09R.`,
-      evaluator: '📋 Readback obrigatório:\n- Pista designada\n- Taxiways\n- Ponto de espera\n\nColoque seu indicativo no final do readback.',
-    };
-  }
-
-  if (lowerMessage.includes('ready') || lowerMessage.includes('pronto')) {
-    return {
-      atc: `${flightData?.aircraft}, hold position. Traffic on final.`,
-    };
-  }
-
-  if (lowerMessage.includes('takeoff') || lowerMessage.includes('decolagem')) {
-    return {
-      atc: `${flightData?.aircraft}, wind 090 degrees 8 knots, runway 09R, cleared for takeoff.`,
-      evaluator: '📋 Readback obrigatório: Pista e autorização de decolagem.',
-    };
-  }
-
-  // Default response
-  return {
-    atc: 'Say again.',
-    evaluator: '⚠️ Comunicação não compreendida. Verifique:\n- Identificação correta\n- Fraseologia padrão ICAO\n- Clareza da mensagem',
-  };
 }
