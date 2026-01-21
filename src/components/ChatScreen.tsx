@@ -5,6 +5,11 @@ import { useApp } from '@/contexts/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import type { ChatMessage, TalkingTo } from '@/types/flight';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MetarDisplay } from '@/components/metar/MetarDisplay';
+import { TafDisplay } from '@/components/metar/TafDisplay';
+import { AirportInfoDisplay } from '@/components/metar/AirportInfoDisplay';
+import { AircraftDataDisplay } from '@/components/metar/AircraftDataDisplay';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -129,7 +134,8 @@ function TalkingToToggle({
 }
 
 export function ChatScreen() {
-  const { messages, addMessage, flightData, settings, departureMetar, arrivalMetar, arrivalTaf } = useApp();
+  const { messages, addMessage, flightData, settings, departureMetar, arrivalMetar, arrivalTaf, departureAirport, arrivalAirport } = useApp();
+  const [activeTab, setActiveTab] = useState<'chat' | 'data'>('chat');
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [talkingTo, setTalkingTo] = useState<TalkingTo>('atc');
@@ -315,150 +321,204 @@ export function ChatScreen() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {/* Audio controls header */}
-      {settings.elevenLabsApiKey && (
-        <div className="flex items-center justify-end px-4 py-2 border-b border-border bg-card/50">
-          <button
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
-              audioEnabled
-                ? 'bg-atc-green/20 text-atc-green'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            {audioEnabled ? (
-              <>
-                <Volume2 className="w-4 h-4" />
-                <span>Áudio ON</span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-4 h-4" />
-                <span>Áudio OFF</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="container mx-auto max-w-3xl">
-          {messages.map((message) => (
-            <MessageBubble 
-              key={message.id} 
-              message={message}
-              onPlayAudio={
-                message.role === 'atc' && settings.elevenLabsApiKey 
-                  ? playTTS 
-                  : undefined
-              }
-              isPlayingAudio={isPlayingAudio}
-            />
-          ))}
+      {/* Tab Navigation */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chat' | 'data')} className="flex flex-col flex-1">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
+          <TabsList className="bg-muted/50">
+            <TabsTrigger value="chat" className="font-mono text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Radio className="w-3.5 h-3.5 mr-2" />
+              COMUNICAÇÃO
+            </TabsTrigger>
+            <TabsTrigger value="data" className="font-mono text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Brain className="w-3.5 h-3.5 mr-2" />
+              DADOS DO VOO
+            </TabsTrigger>
+          </TabsList>
           
-          {isLoading && (
-            <div className="flex items-center gap-3 text-muted-foreground animate-fade-in">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm font-mono">
-                {talkingTo === 'atc' ? 'ATC processando...' : 'Avaliador processando...'}
-              </span>
-            </div>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* Waiting button */}
-      {isWaiting && !isLoading && (
-        <div className="px-4 py-3 border-t border-atc-amber/30 bg-atc-amber/10">
-          <div className="container mx-auto max-w-3xl">
+          {/* Audio controls - only show in chat tab */}
+          {settings.elevenLabsApiKey && activeTab === 'chat' && (
             <button
-              onClick={handleATCResume}
-              className="w-full flex items-center justify-center gap-3 py-3 rounded-lg bg-atc-amber/20 border border-atc-amber/40 text-atc-amber font-mono text-sm hover:bg-atc-amber/30 transition-colors animate-pulse"
+              onClick={() => setAudioEnabled(!audioEnabled)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-mono transition-all ${
+                audioEnabled
+                  ? 'bg-atc-green/20 text-atc-green'
+                  : 'bg-muted text-muted-foreground'
+              }`}
             >
-              <Clock className="w-5 h-5" />
-              <span>⏳ ATC ME CHAMA</span>
-              <span className="text-xs opacity-75">(clique quando situação resolver)</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Input area */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
-        <div className="container mx-auto max-w-3xl">
-          {/* Talking To Toggle */}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-mono text-muted-foreground">Falando com:</span>
-            <TalkingToToggle value={talkingTo} onChange={setTalkingTo} />
-          </div>
-
-          {voiceError && (
-            <div className="flex items-center gap-2 text-xs text-destructive mb-3">
-              <AlertCircle className="w-4 h-4" />
-              {voiceError}
-            </div>
-          )}
-          
-          <div className="flex items-center gap-3">
-            {/* Voice input button */}
-            <AtcButton
-              variant={isRecording ? 'record' : 'outline'}
-              size="icon"
-              onClick={toggleRecording}
-              disabled={isProcessing || isLoading}
-              className={isRecording ? 'animate-pulse-glow' : ''}
-            >
-              {isProcessing ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : isRecording ? (
-                <MicOff className="w-5 h-5" />
+              {audioEnabled ? (
+                <>
+                  <Volume2 className="w-4 h-4" />
+                  <span>Áudio ON</span>
+                </>
               ) : (
-                <Mic className="w-5 h-5" />
+                <>
+                  <VolumeX className="w-4 h-4" />
+                  <span>Áudio OFF</span>
+                </>
               )}
-            </AtcButton>
-
-            {/* Text input */}
-            <div className="flex-1">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  isRecording 
-                    ? 'Gravando...' 
-                    : talkingTo === 'atc'
-                    ? 'Digite sua comunicação para o ATC...'
-                    : 'Pergunte ao avaliador...'
-                }
-                disabled={isRecording || isLoading}
-                className="w-full h-11 px-4 rounded-md border border-border bg-input font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-              />
-            </div>
-
-            {/* Send button */}
-            <AtcButton
-              onClick={handleSend}
-              disabled={!inputText.trim() || isLoading || isRecording}
-              size="icon"
-            >
-              <Send className="w-5 h-5" />
-            </AtcButton>
-          </div>
-
-          {/* Recording indicator */}
-          {isRecording && (
-            <div className="flex items-center justify-center gap-2 mt-3 text-atc-red">
-              <div className="w-2 h-2 rounded-full bg-atc-red animate-blink-record" />
-              <span className="text-xs font-mono uppercase">Gravando - Clique para parar</span>
-            </div>
+            </button>
           )}
         </div>
-      </div>
+
+        {/* Chat Tab Content */}
+        <TabsContent value="chat" className="flex-1 flex flex-col m-0 data-[state=inactive]:hidden">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto px-4 py-6">
+            <div className="container mx-auto max-w-3xl">
+              {messages.map((message) => (
+                <MessageBubble 
+                  key={message.id} 
+                  message={message}
+                  onPlayAudio={
+                    message.role === 'atc' && settings.elevenLabsApiKey 
+                      ? playTTS 
+                      : undefined
+                  }
+                  isPlayingAudio={isPlayingAudio}
+                />
+              ))}
+              
+              {isLoading && (
+                <div className="flex items-center gap-3 text-muted-foreground animate-fade-in">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-mono">
+                    {talkingTo === 'atc' ? 'ATC processando...' : 'Avaliador processando...'}
+                  </span>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Waiting button */}
+          {isWaiting && !isLoading && (
+            <div className="px-4 py-3 border-t border-atc-amber/30 bg-atc-amber/10">
+              <div className="container mx-auto max-w-3xl">
+                <button
+                  onClick={handleATCResume}
+                  className="w-full flex items-center justify-center gap-3 py-3 rounded-lg bg-atc-amber/20 border border-atc-amber/40 text-atc-amber font-mono text-sm hover:bg-atc-amber/30 transition-colors animate-pulse"
+                >
+                  <Clock className="w-5 h-5" />
+                  <span>⏳ ATC ME CHAMA</span>
+                  <span className="text-xs opacity-75">(clique quando situação resolver)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Input area */}
+          <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
+            <div className="container mx-auto max-w-3xl">
+              {/* Talking To Toggle */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-mono text-muted-foreground">Falando com:</span>
+                <TalkingToToggle value={talkingTo} onChange={setTalkingTo} />
+              </div>
+
+              {voiceError && (
+                <div className="flex items-center gap-2 text-xs text-destructive mb-3">
+                  <AlertCircle className="w-4 h-4" />
+                  {voiceError}
+                </div>
+              )}
+              
+              <div className="flex items-center gap-3">
+                {/* Voice input button */}
+                <AtcButton
+                  variant={isRecording ? 'record' : 'outline'}
+                  size="icon"
+                  onClick={toggleRecording}
+                  disabled={isProcessing || isLoading}
+                  className={isRecording ? 'animate-pulse-glow' : ''}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : isRecording ? (
+                    <MicOff className="w-5 h-5" />
+                  ) : (
+                    <Mic className="w-5 h-5" />
+                  )}
+                </AtcButton>
+
+                {/* Text input */}
+                <div className="flex-1">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      isRecording 
+                        ? 'Gravando...' 
+                        : talkingTo === 'atc'
+                        ? 'Digite sua comunicação para o ATC...'
+                        : 'Pergunte ao avaliador...'
+                    }
+                    disabled={isRecording || isLoading}
+                    className="w-full h-11 px-4 rounded-md border border-border bg-input font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Send button */}
+                <AtcButton
+                  onClick={handleSend}
+                  disabled={!inputText.trim() || isLoading || isRecording}
+                  size="icon"
+                >
+                  <Send className="w-5 h-5" />
+                </AtcButton>
+              </div>
+
+              {/* Recording indicator */}
+              {isRecording && (
+                <div className="flex items-center justify-center gap-2 mt-3 text-atc-red">
+                  <div className="w-2 h-2 rounded-full bg-atc-red animate-blink-record" />
+                  <span className="text-xs font-mono uppercase">Gravando - Clique para parar</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Data Tab Content */}
+        <TabsContent value="data" className="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+          <div className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+            {/* Flight Info Header */}
+            {flightData && (
+              <div className="text-center mb-6">
+                <h2 className="text-xl font-mono font-bold text-primary">
+                  {flightData.departureIcao} → {flightData.arrivalIcao}
+                </h2>
+                <p className="text-sm text-muted-foreground font-mono">
+                  {flightData.aircraft} • {flightData.flightType} • {flightData.mode}
+                </p>
+              </div>
+            )}
+            
+            {/* Aircraft Data */}
+            {flightData && (
+              <AircraftDataDisplay aircraftIdentifier={flightData.aircraft} />
+            )}
+            
+            {/* METAR Grid */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <MetarDisplay metar={departureMetar} label="PARTIDA" color="green" />
+              <MetarDisplay metar={arrivalMetar} label="CHEGADA" color="cyan" />
+            </div>
+            
+            {/* TAF */}
+            <TafDisplay taf={arrivalTaf} />
+            
+            {/* Airport Info Grid */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <AirportInfoDisplay airport={departureAirport} label="PARTIDA" color="green" />
+              <AirportInfoDisplay airport={arrivalAirport} label="CHEGADA" color="cyan" />
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
