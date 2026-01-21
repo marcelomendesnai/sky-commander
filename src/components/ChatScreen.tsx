@@ -322,8 +322,8 @@ export function ChatScreen() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Tab Navigation */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chat' | 'data')} className="flex flex-col flex-1">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chat' | 'data')} className="flex flex-col flex-1 overflow-hidden">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="chat" className="font-mono text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Radio className="w-3.5 h-3.5 mr-2" />
