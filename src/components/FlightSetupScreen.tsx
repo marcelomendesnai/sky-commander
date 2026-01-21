@@ -5,6 +5,7 @@ import { AtcInput } from '@/components/ui/atc-input';
 import { AtcButton } from '@/components/ui/atc-button';
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
+import type { AirportData } from '@/types/flight';
 
 // Common ICAO codes for validation (simplified - in production would use API)
 const validateICAO = async (icao: string, avwxApiKey: string): Promise<boolean> => {
@@ -23,8 +24,87 @@ const validateICAO = async (icao: string, avwxApiKey: string): Promise<boolean> 
   }
 };
 
+// Fetch complete airport data from AVWX
+const fetchAirportData = async (icao: string, avwxApiKey: string): Promise<AirportData | null> => {
+  if (!avwxApiKey) return null;
+  
+  try {
+    const response = await fetch(`https://avwx.rest/api/station/${icao.toUpperCase()}`, {
+      headers: { 'Authorization': `BEARER ${avwxApiKey}` }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    
+    // Parse frequencies from the station data
+    const frequencies = [];
+    if (data.freqs) {
+      for (const freq of data.freqs) {
+        frequencies.push({
+          type: freq.type || 'UNKNOWN',
+          frequency: freq.value?.toString() || '',
+          name: freq.name,
+        });
+      }
+    }
+    
+    // Parse runways
+    const runways = [];
+    if (data.runways) {
+      for (const rwy of data.runways) {
+        runways.push({
+          ident: `${rwy.ident1 || ''}/${rwy.ident2 || ''}`,
+          length: rwy.length_ft || 0,
+          width: rwy.width_ft || 0,
+          surface: rwy.surface || 'UNKNOWN',
+        });
+      }
+    }
+    
+    // Determine regional info based on ICAO prefix
+    let regionalInfo = '';
+    const prefix = icao.substring(0, 2).toUpperCase();
+    if (prefix === 'SB') regionalInfo = 'Brasil - Espaço aéreo DECEA. Idioma: Português/Inglês.';
+    else if (prefix === 'SA') regionalInfo = 'Argentina - ANAC. Idioma: Espanhol/Inglês.';
+    else if (prefix === 'SP') regionalInfo = 'Peru - Idioma: Espanhol/Inglês.';
+    else if (prefix === 'SC') regionalInfo = 'Chile - Idioma: Espanhol/Inglês.';
+    else if (prefix === 'SK') regionalInfo = 'Colômbia - Idioma: Espanhol/Inglês.';
+    else if (prefix.startsWith('K') || prefix === 'PA' || prefix === 'PH') regionalInfo = 'EUA - FAA. Idioma: Inglês.';
+    else if (prefix === 'EG') regionalInfo = 'Reino Unido - CAA. Idioma: Inglês.';
+    else if (prefix === 'LF') regionalInfo = 'França - DGAC. Idioma: Francês/Inglês.';
+    else if (prefix === 'ED') regionalInfo = 'Alemanha - DFS. Idioma: Alemão/Inglês.';
+    else if (prefix === 'LE' || prefix === 'GC') regionalInfo = 'Espanha - AENA. Idioma: Espanhol/Inglês.';
+    else if (prefix === 'LP') regionalInfo = 'Portugal - NAV Portugal. Idioma: Português/Inglês.';
+    else regionalInfo = 'Consulte NOTAMs e AIPs locais.';
+    
+    return {
+      icao: icao.toUpperCase(),
+      name: data.name || '',
+      city: data.city || '',
+      country: data.country || '',
+      elevation: data.elevation_ft || 0,
+      latitude: data.latitude || 0,
+      longitude: data.longitude || 0,
+      timezone: data.timezone,
+      frequencies,
+      runways,
+      regionalInfo,
+    };
+  } catch {
+    return null;
+  }
+};
+
 export function FlightSetupScreen() {
-  const { settings, setFlightData, setCurrentScreen, setDepartureMetar, setArrivalMetar, setArrivalTaf } = useApp();
+  const { 
+    settings, 
+    setFlightData, 
+    setCurrentScreen, 
+    setDepartureMetar, 
+    setArrivalMetar, 
+    setArrivalTaf,
+    setDepartureAirport,
+    setArrivalAirport,
+  } = useApp();
   
   const [aircraft, setAircraft] = useState('');
   const [departureIcao, setDepartureIcao] = useState('');
@@ -121,16 +201,20 @@ export function FlightSetupScreen() {
         return;
       }
 
-      // Fetch METAR/TAF data
-      const [depMetar, arrMetar, arrTaf] = await Promise.all([
+      // Fetch METAR/TAF and airport data in parallel
+      const [depMetar, arrMetar, arrTaf, depAirport, arrAirport] = await Promise.all([
         fetchMetar(departureIcao),
         fetchMetar(arrivalIcao),
         fetchTaf(arrivalIcao),
+        fetchAirportData(departureIcao, settings.avwxApiKey),
+        fetchAirportData(arrivalIcao, settings.avwxApiKey),
       ]);
 
       setDepartureMetar(depMetar);
       setArrivalMetar(arrMetar);
       setArrivalTaf(arrTaf);
+      setDepartureAirport(depAirport);
+      setArrivalAirport(arrAirport);
 
       setFlightData({
         aircraft: aircraft.toUpperCase(),
