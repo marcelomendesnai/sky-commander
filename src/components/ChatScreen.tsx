@@ -251,8 +251,8 @@ export function ChatScreen() {
 
       const data = await response.json();
 
-      // Update waiting state
-      setIsWaiting(data.isWaiting || false);
+      // Update waiting state - only when talking to ATC
+      setIsWaiting(talkingTo === 'atc' && (data.isWaiting || false));
 
       // Add responses to chat
       if (talkingTo === 'atc') {
