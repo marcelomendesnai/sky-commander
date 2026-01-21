@@ -113,3 +113,17 @@ export interface AircraftData {
 export type TalkingTo = 'atc' | 'evaluator';
 
 export type AppScreen = 'settings' | 'flight-setup' | 'metar' | 'chat';
+
+// Frequency types for ATC communication
+export type FrequencyType = 'ATIS' | 'CLR' | 'GND' | 'TWR' | 'APP' | 'DEP' | 'CTR';
+
+export interface SelectedFrequency {
+  airport: 'departure' | 'arrival';
+  frequencyType: FrequencyType;
+  frequency: string;
+  name: string;
+}
+
+// Chronological order of frequencies for each phase
+export const DEPARTURE_FREQUENCY_ORDER: FrequencyType[] = ['ATIS', 'CLR', 'GND', 'TWR', 'DEP', 'CTR'];
+export const ARRIVAL_FREQUENCY_ORDER: FrequencyType[] = ['CTR', 'APP', 'TWR', 'GND'];

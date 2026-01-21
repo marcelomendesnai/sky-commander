@@ -5,6 +5,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface SelectedFrequency {
+  airport: 'departure' | 'arrival';
+  frequencyType: string;
+  frequency: string;
+  name: string;
+}
+
 interface ChatRequest {
   message: string;
   history: { role: string; content: string }[];
@@ -20,6 +27,7 @@ interface ChatRequest {
   systemPrompt: string;
   anthropicApiKey?: string;
   selectedModel?: string;
+  selectedFrequency?: SelectedFrequency | null;
 }
 
 serve(async (req) => {
@@ -37,7 +45,25 @@ serve(async (req) => {
       systemPrompt,
       anthropicApiKey,
       selectedModel,
+      selectedFrequency,
     }: ChatRequest = await req.json();
+
+    // Build frequency context for prompt
+    let frequencyContext = '';
+    if (selectedFrequency) {
+      const airportIcao = selectedFrequency.airport === 'departure' 
+        ? flightData.departureIcao 
+        : flightData.arrivalIcao;
+      frequencyContext = `
+**Frequência Sintonizada pelo Piloto:**
+Aeroporto: ${airportIcao} (${selectedFrequency.airport === 'departure' ? 'Saída' : 'Destino'})
+Setor: ${selectedFrequency.frequencyType} (${selectedFrequency.frequency})
+
+IMPORTANTE: O piloto está atualmente sintonizado em ${selectedFrequency.frequencyType}. 
+Se ele chamar um setor diferente do sintonizado (ex: chamar "Torre" quando está sintonizado em "Solo/GND"), 
+você deve estranhar educadamente e informar que ele está na frequência errada, como um ATC real faria.
+Exemplo: "Estação chamando Torre, você está na frequência do Solo, verifique sua frequência."`;
+    }
 
     // Build the full system prompt with flight context
     const fullSystemPrompt = `${systemPrompt}
@@ -52,6 +78,7 @@ serve(async (req) => {
 
 **Dados Meteorológicos:**
 ${metarContext || 'Não disponível'}
+${frequencyContext}
 
 ## INSTRUÇÃO DE RESPOSTA
 
