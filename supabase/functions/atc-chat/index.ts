@@ -212,8 +212,9 @@ function parseATCResponse(
 ): { atcResponse?: string; evaluatorResponse?: string; isWaiting?: boolean } {
   const result: { atcResponse?: string; evaluatorResponse?: string; isWaiting?: boolean } = {};
 
-  // Check for waiting scenarios
+  // Check for waiting scenarios - Portuguese AND English patterns
   const waitingPatterns = [
+    // English patterns
     /hold (position|short)/i,
     /traffic (on final|on approach|in sight)/i,
     /stand by/i,
@@ -221,6 +222,17 @@ function parseATCResponse(
     /sequence/i,
     /behind/i,
     /number \d+ (to|for)/i,
+    // Portuguese patterns
+    /mantenha posição/i,
+    /aguarde/i,
+    /espere/i,
+    /tráfego/i,
+    /pista em uso/i,
+    /sequência/i,
+    /número \d+/i,
+    /após (o |a )?(tráfego|pouso|decolagem)/i,
+    /autorização.*pendente/i,
+    /aguardando/i,
   ];
   
   result.isWaiting = waitingPatterns.some(pattern => pattern.test(content));
