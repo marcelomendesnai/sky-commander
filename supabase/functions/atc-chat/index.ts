@@ -28,6 +28,175 @@ interface ChatRequest {
   anthropicApiKey?: string;
   selectedModel?: string;
   selectedFrequency?: SelectedFrequency | null;
+  currentPhase?: string; // Flight phase from timeline
+}
+
+// Flight phase metadata for validation and context
+interface FlightPhaseInfo {
+  id: string;
+  label: string;
+  expectedService: {
+    VFR: string[];
+    IFR: string[];
+  };
+  silenceRequired: boolean;
+  airport: 'departure' | 'arrival' | 'enroute';
+  silenceMessage?: string;
+  expectedServiceHint?: string;
+}
+
+// All flight phases with their rules - must match frontend
+const FLIGHT_PHASES: Record<string, FlightPhaseInfo> = {
+  'PARKING_COLD': {
+    id: 'PARKING_COLD', label: 'Pátio - Motor Desligado',
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    silenceRequired: true, airport: 'departure',
+    silenceMessage: 'Motor desligado. Nenhuma comunicação deve ser iniciada.'
+  },
+  'PARKING_HOT': {
+    id: 'PARKING_HOT', label: 'Pátio - Motor Ligado',
+    expectedService: { VFR: ['ATIS', 'GND'], IFR: ['ATIS', 'CLR', 'GND'] },
+    silenceRequired: false, airport: 'departure',
+    expectedServiceHint: 'VFR: ATIS → SOLO | IFR: ATIS → CLR → SOLO'
+  },
+  'TAXI_OUT': {
+    id: 'TAXI_OUT', label: 'Táxi para Pista',
+    expectedService: { VFR: ['GND'], IFR: ['GND'] },
+    silenceRequired: false, airport: 'departure',
+    expectedServiceHint: 'Em comunicação com SOLO (Ground)'
+  },
+  'HOLDING_POINT': {
+    id: 'HOLDING_POINT', label: 'Ponto de Espera',
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    silenceRequired: false, airport: 'departure',
+    expectedServiceHint: 'Contatar TORRE para autorização'
+  },
+  'LINED_UP': {
+    id: 'LINED_UP', label: 'Alinhado na Pista',
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    silenceRequired: false, airport: 'departure'
+  },
+  'TAKEOFF_ROLL': {
+    id: 'TAKEOFF_ROLL', label: 'Corrida de Decolagem',
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    silenceRequired: true, airport: 'departure',
+    silenceMessage: 'Corrida de decolagem. Silêncio absoluto.'
+  },
+  'INITIAL_CLIMB': {
+    id: 'INITIAL_CLIMB', label: 'Subida Inicial',
+    expectedService: { VFR: ['TWR', 'DEP'], IFR: ['TWR', 'DEP'] },
+    silenceRequired: false, airport: 'departure'
+  },
+  'LEAVING_TMA': {
+    id: 'LEAVING_TMA', label: 'Saindo da TMA',
+    expectedService: { VFR: ['DEP', 'CTR'], IFR: ['DEP', 'CTR'] },
+    silenceRequired: false, airport: 'enroute'
+  },
+  'CRUISE': {
+    id: 'CRUISE', label: 'Cruzeiro',
+    expectedService: { VFR: ['CTR', 'NONE'], IFR: ['CTR'] },
+    silenceRequired: false, airport: 'enroute'
+  },
+  'DESCENT': {
+    id: 'DESCENT', label: 'Descida',
+    expectedService: { VFR: ['CTR', 'APP'], IFR: ['CTR', 'APP'] },
+    silenceRequired: false, airport: 'enroute'
+  },
+  'ENTERING_TMA': {
+    id: 'ENTERING_TMA', label: 'Entrando na TMA',
+    expectedService: { VFR: ['APP'], IFR: ['APP'] },
+    silenceRequired: false, airport: 'arrival'
+  },
+  'APPROACH': {
+    id: 'APPROACH', label: 'Aproximação',
+    expectedService: { VFR: ['APP'], IFR: ['APP'] },
+    silenceRequired: false, airport: 'arrival'
+  },
+  'FINAL': {
+    id: 'FINAL', label: 'Final',
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    silenceRequired: false, airport: 'arrival'
+  },
+  'LANDING': {
+    id: 'LANDING', label: 'Pouso / Flare',
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    silenceRequired: true, airport: 'arrival',
+    silenceMessage: 'Pouso em andamento. Silêncio.'
+  },
+  'ROLLOUT': {
+    id: 'ROLLOUT', label: 'Rollout',
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    silenceRequired: true, airport: 'arrival',
+    silenceMessage: 'Rollout. Aguardar instruções da TORRE.'
+  },
+  'TAXI_IN': {
+    id: 'TAXI_IN', label: 'Táxi para Pátio',
+    expectedService: { VFR: ['GND'], IFR: ['GND'] },
+    silenceRequired: false, airport: 'arrival'
+  },
+  'PARKING_ARRIVED': {
+    id: 'PARKING_ARRIVED', label: 'Pátio - Estacionado',
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    silenceRequired: false, airport: 'arrival',
+    expectedServiceHint: 'Fim das comunicações'
+  }
+};
+
+// Build phase context for the AI prompt
+function buildPhaseContext(
+  currentPhase: string | undefined,
+  flightType: string,
+  selectedFrequency: SelectedFrequency | null
+): string {
+  if (!currentPhase) return '';
+  
+  const phaseInfo = FLIGHT_PHASES[currentPhase];
+  if (!phaseInfo) return '';
+  
+  const expectedServices = phaseInfo.expectedService[flightType as 'VFR' | 'IFR'] || [];
+  const airportRef = phaseInfo.airport === 'departure' ? 'SAÍDA' : 
+                     phaseInfo.airport === 'arrival' ? 'DESTINO' : 'ROTA';
+  
+  let context = `
+📍 **FASE ATUAL DO VOO: ${phaseInfo.label}**
+- Aeroporto de referência: ${airportRef}
+- Serviço esperado (${flightType}): ${expectedServices.includes('NONE') ? 'Nenhum' : expectedServices.join(' ou ')}
+- Silêncio obrigatório: ${phaseInfo.silenceRequired ? 'SIM ⚠️' : 'Não'}
+`;
+
+  if (phaseInfo.silenceRequired && phaseInfo.silenceMessage) {
+    context += `- ⚠️ ${phaseInfo.silenceMessage}\n`;
+  }
+
+  if (phaseInfo.expectedServiceHint) {
+    context += `- Dica: ${phaseInfo.expectedServiceHint}\n`;
+  }
+
+  // Validation rules for the AI
+  context += `
+**VALIDAÇÃO DE FASE - REGRAS PARA O ATC/AVALIADOR:**
+
+1. Se a fase exige SILÊNCIO (${phaseInfo.silenceRequired ? 'ESTA FASE EXIGE' : 'esta fase não exige'}):
+   - O ATC deve estranhar a comunicação
+   - O Avaliador deve corrigir: "Nesta fase (${phaseInfo.label}), o piloto não deveria estar transmitindo."
+
+2. Se o piloto está no SERVIÇO ERRADO para a fase:
+   - Fase atual: ${phaseInfo.label}
+   - Serviços esperados: ${expectedServices.join(', ')}
+   ${selectedFrequency ? `- Frequência sintonizada: ${selectedFrequency.frequencyType}` : '- Nenhuma frequência selecionada'}
+   ${selectedFrequency && !expectedServices.includes(selectedFrequency.frequencyType) && !expectedServices.includes('NONE') 
+     ? `- ⚠️ INCONSISTÊNCIA: Piloto sintonizado em ${selectedFrequency.frequencyType}, mas deveria estar em ${expectedServices.join(' ou ')}`
+     : ''}
+
+3. PROGRESSÃO ESPERADA:
+   - Antes de taxiar: SOLO (Ground)
+   - No ponto de espera: TORRE
+   - Após decolagem: TORRE → DEP
+   - Em rota: CTR
+   - Na chegada: APP → TORRE → SOLO
+`;
+
+  return context;
 }
 
 // Função para gerar ATIS no padrão ICAO operacional
@@ -247,6 +416,7 @@ serve(async (req) => {
       anthropicApiKey,
       selectedModel,
       selectedFrequency,
+      currentPhase,
     }: ChatRequest = await req.json();
 
     // ATIS: Gerar resposta automática formatada (não precisa de IA)
@@ -292,6 +462,9 @@ EXEMPLOS DE ERROS:
 - Sintonizado: SBGR SOLO | Piloto diz: "Guarulhos Solo" → CORRETO!`;
     }
 
+    // Build phase context
+    const phaseContext = buildPhaseContext(currentPhase, flightData.flightType, selectedFrequency || null);
+
     // Build the full system prompt with flight context
     const fullSystemPrompt = `${systemPrompt}
 
@@ -306,6 +479,7 @@ EXEMPLOS DE ERROS:
 **Dados Meteorológicos:**
 ${metarContext || 'Não disponível'}
 ${frequencyContext}
+${phaseContext}
 
 ## INSTRUÇÃO DE RESPOSTA
 
@@ -313,10 +487,11 @@ ${talkingTo === 'atc' ? `
 Você está respondendo como ATC. O piloto está falando com você pelo rádio.
 ${flightData.mode === 'TREINO' ? `
 IMPORTANTE: Após sua resposta como ATC, adicione uma avaliação como instrutor.
+O Avaliador DEVE verificar se a comunicação é apropriada para a FASE DO VOO atual.
 Formate assim:
 📡 ATC: [sua resposta como controlador]
 
-🧠 Avaliador: [sua análise técnica da comunicação do piloto]
+🧠 Avaliador: [sua análise técnica - incluindo verificação de fase do voo]
 ` : `
 Responda APENAS como ATC, sem avaliação.
 Formate assim:

@@ -4,6 +4,7 @@ import { AtcButton } from '@/components/ui/atc-button';
 import { useApp } from '@/contexts/AppContext';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import type { ChatMessage, TalkingTo, SelectedFrequency } from '@/types/flight';
+import { getFlightPhaseInfo, validatePhaseForCommunication } from '@/types/flight';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetarDisplay } from '@/components/metar/MetarDisplay';
@@ -11,6 +12,7 @@ import { TafDisplay } from '@/components/metar/TafDisplay';
 import { AirportInfoDisplay } from '@/components/metar/AirportInfoDisplay';
 import { AircraftDataDisplay } from '@/components/metar/AircraftDataDisplay';
 import { FrequencySelector } from '@/components/FrequencySelector';
+import { FlightTimeline } from '@/components/FlightTimeline';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -135,7 +137,12 @@ function TalkingToToggle({
 }
 
 export function ChatScreen() {
-  const { messages, addMessage, flightData, settings, departureMetar, arrivalMetar, arrivalTaf, departureAirport, arrivalAirport } = useApp();
+  const { 
+    messages, addMessage, flightData, settings, 
+    departureMetar, arrivalMetar, arrivalTaf, 
+    departureAirport, arrivalAirport,
+    currentFlightPhase, setCurrentFlightPhase
+  } = useApp();
   const [activeTab, setActiveTab] = useState<'chat' | 'data'>('chat');
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -250,6 +257,7 @@ export function ChatScreen() {
           anthropicApiKey: settings.anthropicApiKey,
           selectedModel: settings.selectedModel,
           selectedFrequency: talkingTo === 'atc' ? selectedFrequency : null,
+          currentPhase: currentFlightPhase,
         }),
       });
 
@@ -295,11 +303,52 @@ export function ChatScreen() {
     const text = inputText.trim();
     setInputText('');
     
+    // Validate phase before sending (only when talking to ATC)
+    if (talkingTo === 'atc') {
+      const phaseValidation = validatePhaseForCommunication(
+        currentFlightPhase, 
+        selectedFrequency, 
+        flightData?.flightType || 'VFR'
+      );
+      
+      if (!phaseValidation.isValid && phaseValidation.error) {
+        // Show phase error as evaluator feedback
+        addMessage({ role: 'user', content: text });
+        addMessage({ 
+          role: 'evaluator', 
+          content: `🧠 Avaliador:\n\n❌ **Erro de Fase**: ${phaseValidation.error}\n\nAjuste a fase do voo na linha do tempo antes de continuar.`
+        });
+        return;
+      }
+      
+      if (phaseValidation.warning) {
+        toast.warning(phaseValidation.warning);
+      }
+    }
+    
     addMessage({ role: 'user', content: text });
     await processATCResponse(text);
   };
 
   const handleVoiceTranscript = async (text: string) => {
+    // Validate phase before sending (only when talking to ATC)
+    if (talkingTo === 'atc') {
+      const phaseValidation = validatePhaseForCommunication(
+        currentFlightPhase, 
+        selectedFrequency, 
+        flightData?.flightType || 'VFR'
+      );
+      
+      if (!phaseValidation.isValid && phaseValidation.error) {
+        addMessage({ role: 'user', content: text });
+        addMessage({ 
+          role: 'evaluator', 
+          content: `🧠 Avaliador:\n\n❌ **Erro de Fase**: ${phaseValidation.error}\n\nAjuste a fase do voo na linha do tempo antes de continuar.`
+        });
+        return;
+      }
+    }
+    
     addMessage({ role: 'user', content: text });
     await processATCResponse(text);
   };
@@ -413,6 +462,17 @@ export function ChatScreen() {
           {/* Input area */}
           <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
             <div className="container mx-auto max-w-3xl space-y-3">
+              {/* Flight Timeline - only when talking to ATC */}
+              {talkingTo === 'atc' && flightData && (
+                <div className="border-b border-border pb-3 mb-2">
+                  <FlightTimeline
+                    currentPhase={currentFlightPhase}
+                    onChange={setCurrentFlightPhase}
+                    flightType={flightData.flightType}
+                  />
+                </div>
+              )}
+              
               {/* Frequency Selector - only when talking to ATC */}
               {talkingTo === 'atc' && (
                 <FrequencySelector
