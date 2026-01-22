@@ -323,9 +323,9 @@ export function ChatScreen() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Tab Navigation */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chat' | 'data')} className="flex flex-col flex-1 overflow-hidden">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chat' | 'data')} className="flex flex-col flex-1 min-h-0 overflow-hidden">
         <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="chat" className="font-mono text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
@@ -364,9 +364,9 @@ export function ChatScreen() {
         </div>
 
         {/* Chat Tab Content */}
-        <TabsContent value="chat" className="flex-1 flex flex-col m-0 data-[state=inactive]:hidden">
+        <TabsContent value="chat" className="flex-1 flex flex-col m-0 min-h-0 data-[state=inactive]:hidden">
           {/* Messages area */}
-          <div className="flex-1 overflow-y-auto px-4 py-6">
+          <div className="flex-1 overflow-y-auto px-4 py-6 min-h-0">
             <div className="container mx-auto max-w-3xl">
               {messages.map((message) => (
                 <MessageBubble 
