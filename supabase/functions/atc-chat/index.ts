@@ -30,7 +30,8 @@ interface ChatRequest {
   selectedFrequency?: SelectedFrequency | null;
 }
 
-// Função para gerar ATIS no formato padrão de transmissão de rádio
+// Função para gerar ATIS no padrão ICAO operacional
+// Ordem: ID+Letra → Hora → Vento → Visibilidade → Fenômenos → Nuvens → Temp/DP → QNH → Pista → Instrução
 function generateAtisMessage(
   flightData: ChatRequest['flightData'],
   metarContext: string,
@@ -48,72 +49,115 @@ function generateAtisMessage(
     ? flightData.departureIcao 
     : flightData.arrivalIcao;
   
-  // Extrair nome do aeroporto da frequência
   const airportName = selectedFrequency.name
     .replace(/^ATIS\s*/i, '')
     .trim() || airportIcao;
   
   // Hora atual Zulu
   const now = new Date();
-  const zuluHour = String(now.getUTCHours()).padStart(2, '0');
-  const zuluMin = String(now.getUTCMinutes()).padStart(2, '0');
-  const zuluTime = `${zuluHour}${zuluMin}`;
+  const zuluTime = `${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}`;
   
-  // Parser do METAR para extrair dados
+  // === PARSE DO METAR ===
+  
+  // 3. VENTO
   let wind = 'Vento calmo';
-  let visibility = 'Visibilidade maior que 10 quilômetros';
-  let ceiling = 'Céu claro';
-  let tempDewpoint = '';
-  let qnh = '';
-  let runway = '';
-  let conditions = '';
-  
-  // Parse wind from METAR context
+  let windDirection = 0;
   const windMatch = metarContext.match(/Vento:\s*(\d+)[°º]?\s*(?:graus?)?\s*[,/]?\s*(\d+)\s*(?:nós|kt)/i);
   const windCalmMatch = metarContext.match(/Vento:\s*(calmo|calm|vrb)/i);
   if (windMatch) {
-    const windDir = parseInt(windMatch[1]);
+    windDirection = parseInt(windMatch[1]);
     const windSpeed = parseInt(windMatch[2]);
-    wind = `Vento ${String(windDir).padStart(3, '0')} graus, ${windSpeed} nós`;
-    
-    // Calcular pista provável baseada no vento (arredonda para a dezena mais próxima)
-    const runwayNum = Math.round(windDir / 10);
-    runway = `Pista em uso ${String(runwayNum === 0 ? 36 : runwayNum).padStart(2, '0')}`;
+    wind = `Vento ${String(windDirection).padStart(3, '0')} graus, ${windSpeed} nós`;
   } else if (windCalmMatch) {
     wind = 'Vento calmo';
-    runway = 'Consulte a torre para pista em uso';
   }
   
-  // Parse visibility
+  // 4. VISIBILIDADE
+  let visibility = 'Visibilidade mais de 10 quilômetros';
+  let visibilityMeters = 9999;
   const visMatch = metarContext.match(/Visibilidade:\s*(\d+)\s*(metros?|m|km|quilômetros?)/i);
-  const cavokMatch = metarContext.match(/CAVOK/i);
-  if (cavokMatch) {
-    visibility = 'CAVOK';
-    ceiling = '';
-  } else if (visMatch) {
+  if (visMatch) {
     const visValue = parseInt(visMatch[1]);
     const visUnit = visMatch[2].toLowerCase();
     if (visUnit.startsWith('k') || visUnit.startsWith('q')) {
+      visibilityMeters = visValue * 1000;
       visibility = `Visibilidade ${visValue} quilômetros`;
     } else {
+      visibilityMeters = visValue;
       visibility = visValue >= 9999 
-        ? 'Visibilidade maior que 10 quilômetros'
+        ? 'Visibilidade mais de 10 quilômetros'
         : `Visibilidade ${visValue} metros`;
     }
   }
   
-  // Parse ceiling/clouds
-  const cloudPatterns = metarContext.match(/(Nuvens?|Teto|Ceiling|Clouds?):\s*([^\n]+)/i);
-  if (cloudPatterns && !cavokMatch) {
-    const cloudInfo = cloudPatterns[2].trim();
-    if (cloudInfo.toLowerCase().includes('clr') || cloudInfo.toLowerCase().includes('skc') || cloudInfo.toLowerCase().includes('céu claro')) {
-      ceiling = 'Céu claro';
-    } else {
-      ceiling = `Nuvens: ${cloudInfo}`;
+  // 5. FENÔMENOS METEOROLÓGICOS
+  const phenomena: string[] = [];
+  if (/chuva\s*forte|(\+ra|heavy\s*rain)/i.test(metarContext)) phenomena.push('chuva forte');
+  else if (/chuva\s*fraca|(-ra|light\s*rain)/i.test(metarContext)) phenomena.push('chuva fraca');
+  else if (/chuva|(\bra\b|rain)/i.test(metarContext)) phenomena.push('chuva');
+  if (/nevoeiro|(\bfg\b|fog)/i.test(metarContext)) phenomena.push('nevoeiro');
+  else if (/névoa|(\bbr\b|mist)/i.test(metarContext)) phenomena.push('névoa');
+  if (/trovoada|(\bts\b|thunder)/i.test(metarContext)) phenomena.push('trovoada');
+  if (/granizo|(\bgr\b|hail)/i.test(metarContext)) phenomena.push('granizo');
+  
+  const hasPhenomena = phenomena.length > 0;
+  const phenomenaLine = hasPhenomena ? phenomena.join(' e ').charAt(0).toUpperCase() + phenomena.join(' e ').slice(1) : null;
+  
+  // 6. NUVENS
+  let clouds: string[] = [];
+  let hasSignificantClouds = false;
+  
+  // Parse cloud patterns: FEW, SCT, BKN, OVC with altitude
+  const cloudPatterns = metarContext.matchAll(/(poucas|dispersas|quebradas?|encoberto|few|sct|bkn|ovc)\s*(?:a\s*)?(\d+)\s*(pés|ft|feet)?/gi);
+  for (const match of cloudPatterns) {
+    const type = match[1].toLowerCase();
+    const altitude = parseInt(match[2]);
+    let typeText = '';
+    
+    if (type === 'few' || type === 'poucas') typeText = 'poucas nuvens';
+    else if (type === 'sct' || type === 'dispersas') typeText = 'nuvens dispersas';
+    else if (type === 'bkn' || type.startsWith('quebrad')) {
+      typeText = 'nuvens quebradas';
+      hasSignificantClouds = true;
+    } else if (type === 'ovc' || type === 'encoberto') {
+      typeText = 'encoberto';
+      hasSignificantClouds = true;
+    }
+    
+    if (typeText) {
+      clouds.push(`${typeText} ${altitude} pés`);
     }
   }
   
-  // Parse temperature and dewpoint
+  // Também verificar formato "Nuvens: BKN007 OVC013"
+  const cloudRaw = metarContext.match(/(?:Nuvens?|Clouds?):\s*([^\n]+)/i);
+  if (cloudRaw && clouds.length === 0) {
+    const rawClouds = cloudRaw[1];
+    if (/bkn|quebrad/i.test(rawClouds)) hasSignificantClouds = true;
+    if (/ovc|encoberto/i.test(rawClouds)) hasSignificantClouds = true;
+    
+    // Parse formato METAR: BKN007 OVC013
+    const metarClouds = rawClouds.matchAll(/(FEW|SCT|BKN|OVC)(\d{3})/gi);
+    for (const mc of metarClouds) {
+      const type = mc[1].toUpperCase();
+      const altitude = parseInt(mc[2]) * 100; // METAR altitude em centenas de pés
+      let typeText = '';
+      
+      if (type === 'FEW') typeText = 'poucas nuvens';
+      else if (type === 'SCT') typeText = 'nuvens dispersas';
+      else if (type === 'BKN') { typeText = 'nuvens quebradas'; hasSignificantClouds = true; }
+      else if (type === 'OVC') { typeText = 'encoberto'; hasSignificantClouds = true; }
+      
+      if (typeText) clouds.push(`${typeText} ${altitude} pés`);
+    }
+  }
+  
+  // Verificar se céu claro (apenas se não há fenômenos nem nuvens)
+  const isClearSky = !hasPhenomena && !hasSignificantClouds && clouds.length === 0 &&
+    (metarContext.match(/céu\s*claro|clear|clr|skc|cavok/i) || visibilityMeters >= 9999);
+  
+  // 7. TEMPERATURA E PONTO DE ORVALHO
+  let tempDewpoint = 'Temperatura não disponível';
   const tempMatch = metarContext.match(/Temperatura:\s*(-?\d+)[°º]?C?/i);
   const dewMatch = metarContext.match(/(?:Ponto de orvalho|Dewpoint):\s*(-?\d+)[°º]?C?/i);
   if (tempMatch) {
@@ -121,50 +165,66 @@ function generateAtisMessage(
     const dew = dewMatch ? dewMatch[1] : null;
     tempDewpoint = dew 
       ? `Temperatura ${temp}, ponto de orvalho ${dew}`
-      : `Temperatura ${temp} graus`;
+      : `Temperatura ${temp}`;
   }
   
-  // Parse QNH
+  // 8. QNH
+  let qnh = 'QNH não disponível';
   const qnhMatch = metarContext.match(/(?:QNH|Altímetro):\s*(\d{4})\s*(hPa|hectopascals?)?/i);
   const altMatch = metarContext.match(/(?:Altimeter|QNH):\s*(\d{2})\.?(\d{2})/i);
   if (qnhMatch) {
-    qnh = `QNH ${qnhMatch[1]} hectopascals`;
+    qnh = `QNH ${qnhMatch[1]}`;
   } else if (altMatch) {
-    // Convert inHg to hPa if needed
     const inhg = parseFloat(`${altMatch[1]}.${altMatch[2]}`);
     const hpa = Math.round(inhg * 33.8639);
-    qnh = `QNH ${hpa} hectopascals`;
+    qnh = `QNH ${hpa}`;
   }
   
-  // Parse weather conditions (rain, fog, etc)
-  const wxPatterns = [
-    { pattern: /chuva\s*(forte|fraca|moderada)?/i, text: 'Chuva' },
-    { pattern: /(rain|ra)\s*(heavy|light)?/i, text: 'Chuva' },
-    { pattern: /névoa|mist|br/i, text: 'Névoa' },
-    { pattern: /nevoeiro|fog|fg/i, text: 'Nevoeiro' },
-    { pattern: /trovoada|thunder|ts/i, text: 'Trovoada' },
-  ];
-  const wxConditions: string[] = [];
-  for (const wx of wxPatterns) {
-    if (wx.pattern.test(metarContext)) {
-      wxConditions.push(wx.text.toLowerCase());
+  // 9. PISTA EM USO (inferir do vento)
+  let runway = 'Pista principal em uso';
+  if (windDirection > 0) {
+    const runwayNum = Math.round(windDirection / 10);
+    const rwyIdent = runwayNum === 0 ? 36 : runwayNum;
+    runway = `Pista em uso ${String(rwyIdent).padStart(2, '0')}`;
+  }
+  
+  // === CÁLCULO DE CAVOK ===
+  // CAVOK = visibilidade >= 10km + sem fenômenos + sem nuvens significativas abaixo de 5000ft
+  const isCavok = visibilityMeters >= 9999 && !hasPhenomena && !hasSignificantClouds && isClearSky;
+  
+  // === MONTAGEM NA ORDEM ICAO ===
+  const atisLines: string[] = [];
+  
+  // 1-2. Identificação + hora
+  atisLines.push(`${airportName} informação ${infoLetter}, hora ${zuluTime} Zulu.`);
+  
+  // 3. Vento
+  atisLines.push(`${wind}.`);
+  
+  // 4-6. Visibilidade, fenômenos, nuvens (ou CAVOK)
+  if (isCavok) {
+    atisLines.push('CAVOK.');
+  } else {
+    atisLines.push(`${visibility}.`);
+    if (phenomenaLine) {
+      atisLines.push(`${phenomenaLine}.`);
+    }
+    if (clouds.length > 0) {
+      atisLines.push(`${clouds.join(', ')}.`);
     }
   }
-  if (wxConditions.length > 0) {
-    conditions = wxConditions.join(' e ');
-  }
   
-  // Montar mensagem ATIS
-  const atisLines = [
-    `${airportName} informação ${infoLetter}, hora ${zuluTime} Zulu.`,
-    runway ? `${runway}.` : null,
-    `${wind}.`,
-    visibility !== 'CAVOK' ? `${visibility}${conditions ? `, ${conditions}` : ''}.` : 'CAVOK.',
-    ceiling && visibility !== 'CAVOK' ? `${ceiling}.` : null,
-    tempDewpoint ? `${tempDewpoint}.` : null,
-    qnh ? `${qnh}.` : null,
-    `Ao contato inicial, informe ter ${infoLetter}.`,
-  ].filter(Boolean);
+  // 7. Temperatura e ponto de orvalho
+  atisLines.push(`${tempDewpoint}.`);
+  
+  // 8. QNH
+  atisLines.push(`${qnh}.`);
+  
+  // 9. Pista em uso
+  atisLines.push(`${runway}.`);
+  
+  // 10. Instrução final
+  atisLines.push(`Ao contato inicial, informe ter ${infoLetter}.`);
   
   return `📡 ATIS ${airportIcao}:
 
