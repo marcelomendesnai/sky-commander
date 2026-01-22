@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import type { FlightData, MetarData, TafData, ChatMessage, Settings, AppScreen, AirportData, LovableAIModel } from '@/types/flight';
+import type { FlightData, MetarData, TafData, ChatMessage, Settings, AppScreen, AirportData, LovableAIModel, FlightPhase } from '@/types/flight';
 
 const DEFAULT_MODEL: LovableAIModel = 'google/gemini-3-flash-preview';
+const DEFAULT_PHASE: FlightPhase = 'PARKING_COLD';
 
 const DEFAULT_PROMPT = `# ATC VIRTUAL
 
@@ -59,6 +60,10 @@ interface AppContextType {
   currentScreen: AppScreen;
   setCurrentScreen: (screen: AppScreen) => void;
   
+  // Flight phase timeline
+  currentFlightPhase: FlightPhase;
+  setCurrentFlightPhase: (phase: FlightPhase) => void;
+  
   // Actions
   startNewFlight: () => void;
 }
@@ -94,6 +99,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [arrivalAirport, setArrivalAirport] = useState<AirportData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('flight-setup');
+  const [currentFlightPhase, setCurrentFlightPhase] = useState<FlightPhase>(DEFAULT_PHASE);
 
   const updateSettings = useCallback((newSettings: Partial<Settings>) => {
     setSettings(prev => {
@@ -124,6 +130,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDepartureAirport(null);
     setArrivalAirport(null);
     clearMessages();
+    setCurrentFlightPhase(DEFAULT_PHASE);
     setCurrentScreen('flight-setup');
   }, [clearMessages]);
 
@@ -149,6 +156,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         clearMessages,
         currentScreen,
         setCurrentScreen,
+        currentFlightPhase,
+        setCurrentFlightPhase,
         startNewFlight,
       }}
     >

@@ -127,3 +127,321 @@ export interface SelectedFrequency {
 // Chronological order of frequencies for each phase
 export const DEPARTURE_FREQUENCY_ORDER: FrequencyType[] = ['ATIS', 'CLR', 'GND', 'TWR', 'DEP', 'CTR'];
 export const ARRIVAL_FREQUENCY_ORDER: FrequencyType[] = ['CTR', 'APP', 'TWR', 'GND'];
+
+// ============================================
+// FLIGHT PHASE TIMELINE SYSTEM
+// ============================================
+
+// All 17 flight phases
+export type FlightPhase = 
+  | 'PARKING_COLD'      // Pátio - Motor desligado
+  | 'PARKING_HOT'       // Pátio - Motor ligado
+  | 'TAXI_OUT'          // Táxi para pista
+  | 'HOLDING_POINT'     // Ponto de espera
+  | 'LINED_UP'          // Alinhado na pista
+  | 'TAKEOFF_ROLL'      // Corrida de decolagem
+  | 'INITIAL_CLIMB'     // Subida inicial
+  | 'LEAVING_TMA'       // Saindo da TMA
+  | 'CRUISE'            // Cruzeiro
+  | 'DESCENT'           // Descida
+  | 'ENTERING_TMA'      // Entrando na TMA
+  | 'APPROACH'          // Aproximação
+  | 'FINAL'             // Final
+  | 'LANDING'           // Pouso/Flare
+  | 'ROLLOUT'           // Rollout
+  | 'TAXI_IN'           // Táxi para pátio
+  | 'PARKING_ARRIVED';  // Pátio - Estacionado
+
+// Service types that can be expected per phase
+export type ExpectedService = 'ATIS' | 'CLR' | 'GND' | 'TWR' | 'DEP' | 'APP' | 'CTR' | 'NONE';
+
+// Flight phase metadata with validation rules
+export interface FlightPhaseInfo {
+  id: FlightPhase;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  position: number; // 0-100 for timeline positioning
+  
+  // Communication rules
+  expectedService: {
+    VFR: ExpectedService[];
+    IFR: ExpectedService[];
+  };
+  communicationAllowed: boolean;
+  silenceRequired: boolean;
+  airport: 'departure' | 'arrival' | 'enroute';
+  
+  // Validation messages
+  silenceMessage?: string;
+  expectedServiceHint?: string;
+}
+
+// All flight phases with their validation rules
+export const FLIGHT_PHASES: FlightPhaseInfo[] = [
+  {
+    id: 'PARKING_COLD',
+    label: 'Pátio - Motor Desligado',
+    shortLabel: 'COLD',
+    icon: '🅿️',
+    position: 0,
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    communicationAllowed: false,
+    silenceRequired: true,
+    airport: 'departure',
+    silenceMessage: 'Motor desligado. Nenhuma comunicação deve ser iniciada.',
+  },
+  {
+    id: 'PARKING_HOT',
+    label: 'Pátio - Motor Ligado',
+    shortLabel: 'HOT',
+    icon: '🔧',
+    position: 6,
+    expectedService: { 
+      VFR: ['ATIS', 'GND'],
+      IFR: ['ATIS', 'CLR', 'GND']
+    },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'departure',
+    expectedServiceHint: 'VFR: ATIS → SOLO | IFR: ATIS → CLR → SOLO',
+  },
+  {
+    id: 'TAXI_OUT',
+    label: 'Táxi para Pista',
+    shortLabel: 'TAXI',
+    icon: '🚶',
+    position: 12,
+    expectedService: { VFR: ['GND'], IFR: ['GND'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'departure',
+    expectedServiceHint: 'Em comunicação com SOLO (Ground)',
+  },
+  {
+    id: 'HOLDING_POINT',
+    label: 'Ponto de Espera',
+    shortLabel: 'HOLD',
+    icon: '⏸️',
+    position: 18,
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'departure',
+    expectedServiceHint: 'Contatar TORRE para autorização de decolagem',
+  },
+  {
+    id: 'LINED_UP',
+    label: 'Alinhado na Pista',
+    shortLabel: 'RWY',
+    icon: '➡️',
+    position: 24,
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'departure',
+    expectedServiceHint: 'Aguardando autorização final da TORRE',
+  },
+  {
+    id: 'TAKEOFF_ROLL',
+    label: 'Corrida de Decolagem',
+    shortLabel: 'TKOF',
+    icon: '🛫',
+    position: 30,
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    communicationAllowed: false,
+    silenceRequired: true,
+    airport: 'departure',
+    silenceMessage: 'Corrida de decolagem. Silêncio absoluto - concentração total.',
+  },
+  {
+    id: 'INITIAL_CLIMB',
+    label: 'Subida Inicial',
+    shortLabel: 'CLB',
+    icon: '⬆️',
+    position: 38,
+    expectedService: { VFR: ['TWR', 'DEP'], IFR: ['TWR', 'DEP'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'departure',
+    expectedServiceHint: 'TORRE pode transferir para DEP',
+  },
+  {
+    id: 'LEAVING_TMA',
+    label: 'Saindo da TMA',
+    shortLabel: 'TMA↑',
+    icon: '📡',
+    position: 46,
+    expectedService: { VFR: ['DEP', 'CTR'], IFR: ['DEP', 'CTR'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'enroute',
+    expectedServiceHint: 'IFR: DEP/CTR contínuo | VFR: pode se despedir do radar',
+  },
+  {
+    id: 'CRUISE',
+    label: 'Cruzeiro',
+    shortLabel: 'CRZ',
+    icon: '✈️',
+    position: 54,
+    expectedService: { VFR: ['CTR', 'NONE'], IFR: ['CTR'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'enroute',
+    expectedServiceHint: 'IFR: CTR | VFR: apenas se necessário',
+  },
+  {
+    id: 'DESCENT',
+    label: 'Descida',
+    shortLabel: 'DES',
+    icon: '📉',
+    position: 62,
+    expectedService: { VFR: ['CTR', 'APP'], IFR: ['CTR', 'APP'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'enroute',
+    expectedServiceHint: 'CTR → APP, recebe QNH de destino',
+  },
+  {
+    id: 'ENTERING_TMA',
+    label: 'Entrando na TMA',
+    shortLabel: 'TMA↓',
+    icon: '🎯',
+    position: 68,
+    expectedService: { VFR: ['APP'], IFR: ['APP'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'arrival',
+    expectedServiceHint: 'Contato obrigatório com APP',
+  },
+  {
+    id: 'APPROACH',
+    label: 'Aproximação',
+    shortLabel: 'APP',
+    icon: '🔽',
+    position: 74,
+    expectedService: { VFR: ['APP'], IFR: ['APP'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'arrival',
+    expectedServiceHint: 'IFR: vetores e autorização | VFR: instruções visuais',
+  },
+  {
+    id: 'FINAL',
+    label: 'Final',
+    shortLabel: 'FNL',
+    icon: '🛬',
+    position: 80,
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'arrival',
+    expectedServiceHint: 'Transferido para TORRE de destino',
+  },
+  {
+    id: 'LANDING',
+    label: 'Pouso / Flare',
+    shortLabel: 'LDG',
+    icon: '⬇️',
+    position: 86,
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    communicationAllowed: false,
+    silenceRequired: true,
+    airport: 'arrival',
+    silenceMessage: 'Pouso em andamento. Silêncio - apenas readback se necessário.',
+  },
+  {
+    id: 'ROLLOUT',
+    label: 'Rollout',
+    shortLabel: 'ROLL',
+    icon: '🚦',
+    position: 90,
+    expectedService: { VFR: ['TWR'], IFR: ['TWR'] },
+    communicationAllowed: false,
+    silenceRequired: true,
+    airport: 'arrival',
+    silenceMessage: 'Rollout. Aguardar desacelerar, TORRE pode instruir saída.',
+  },
+  {
+    id: 'TAXI_IN',
+    label: 'Táxi para Pátio',
+    shortLabel: 'TAXI',
+    icon: '🚶',
+    position: 94,
+    expectedService: { VFR: ['GND'], IFR: ['GND'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'arrival',
+    expectedServiceHint: 'TORRE instrui → contato com SOLO de destino',
+  },
+  {
+    id: 'PARKING_ARRIVED',
+    label: 'Pátio - Estacionado',
+    shortLabel: 'PARK',
+    icon: '🅿️',
+    position: 100,
+    expectedService: { VFR: ['NONE'], IFR: ['NONE'] },
+    communicationAllowed: true,
+    silenceRequired: false,
+    airport: 'arrival',
+    expectedServiceHint: 'Fim das comunicações. Debriefing disponível.',
+  },
+];
+
+// Helper to get phase info by ID
+export function getFlightPhaseInfo(phase: FlightPhase): FlightPhaseInfo | undefined {
+  return FLIGHT_PHASES.find(p => p.id === phase);
+}
+
+// Helper to validate communication for a phase
+export function validatePhaseForCommunication(
+  phase: FlightPhase,
+  selectedFrequency: SelectedFrequency | null,
+  flightType: 'VFR' | 'IFR'
+): { isValid: boolean; error?: string; warning?: string } {
+  const phaseInfo = getFlightPhaseInfo(phase);
+  if (!phaseInfo) {
+    return { isValid: false, error: 'Fase de voo inválida.' };
+  }
+
+  // Phase requires silence
+  if (phaseInfo.silenceRequired) {
+    return { 
+      isValid: false, 
+      error: phaseInfo.silenceMessage || `Fase "${phaseInfo.label}": Silêncio obrigatório.`
+    };
+  }
+
+  // Communication not allowed in this phase
+  if (!phaseInfo.communicationAllowed) {
+    return { 
+      isValid: false, 
+      error: `Nesta fase, não há comunicação esperada.`
+    };
+  }
+
+  // Check if frequency matches expected service for this phase
+  const expectedServices = phaseInfo.expectedService[flightType];
+  
+  // If no frequency selected but communication is allowed, just warn
+  if (!selectedFrequency) {
+    if (!expectedServices.includes('NONE')) {
+      return {
+        isValid: true,
+        warning: `Fase "${phaseInfo.label}": Deveria estar em contato com ${expectedServices.join(' ou ')}.`
+      };
+    }
+    return { isValid: true };
+  }
+
+  // Check if selected frequency matches expected
+  const freqType = selectedFrequency.frequencyType as ExpectedService;
+  if (!expectedServices.includes(freqType) && !expectedServices.includes('NONE')) {
+    return {
+      isValid: false,
+      error: `Fase "${phaseInfo.label}": Você deveria estar em contato com ${expectedServices.join(' ou ')}, não com ${freqType}.`
+    };
+  }
+
+  return { isValid: true };
+}
