@@ -30,6 +30,147 @@ interface ChatRequest {
   selectedFrequency?: SelectedFrequency | null;
 }
 
+// Função para gerar ATIS no formato padrão de transmissão de rádio
+function generateAtisMessage(
+  flightData: ChatRequest['flightData'],
+  metarContext: string,
+  selectedFrequency: SelectedFrequency
+): string {
+  // Alfabeto fonético NATO
+  const letters = ['ALFA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT', 'GOLF', 
+                   'HOTEL', 'INDIA', 'JULIET', 'KILO', 'LIMA', 'MIKE', 'NOVEMBER',
+                   'OSCAR', 'PAPA', 'QUEBEC', 'ROMEO', 'SIERRA', 'TANGO', 'UNIFORM',
+                   'VICTOR', 'WHISKEY', 'XRAY', 'YANKEE', 'ZULU'];
+  const infoLetter = letters[Math.floor(Math.random() * letters.length)];
+  
+  // Determinar ICAO e nome do aeroporto
+  const airportIcao = selectedFrequency.airport === 'departure' 
+    ? flightData.departureIcao 
+    : flightData.arrivalIcao;
+  
+  // Extrair nome do aeroporto da frequência
+  const airportName = selectedFrequency.name
+    .replace(/^ATIS\s*/i, '')
+    .trim() || airportIcao;
+  
+  // Hora atual Zulu
+  const now = new Date();
+  const zuluHour = String(now.getUTCHours()).padStart(2, '0');
+  const zuluMin = String(now.getUTCMinutes()).padStart(2, '0');
+  const zuluTime = `${zuluHour}${zuluMin}`;
+  
+  // Parser do METAR para extrair dados
+  let wind = 'Vento calmo';
+  let visibility = 'Visibilidade maior que 10 quilômetros';
+  let ceiling = 'Céu claro';
+  let tempDewpoint = '';
+  let qnh = '';
+  let runway = '';
+  let conditions = '';
+  
+  // Parse wind from METAR context
+  const windMatch = metarContext.match(/Vento:\s*(\d+)[°º]?\s*(?:graus?)?\s*[,/]?\s*(\d+)\s*(?:nós|kt)/i);
+  const windCalmMatch = metarContext.match(/Vento:\s*(calmo|calm|vrb)/i);
+  if (windMatch) {
+    const windDir = parseInt(windMatch[1]);
+    const windSpeed = parseInt(windMatch[2]);
+    wind = `Vento ${String(windDir).padStart(3, '0')} graus, ${windSpeed} nós`;
+    
+    // Calcular pista provável baseada no vento (arredonda para a dezena mais próxima)
+    const runwayNum = Math.round(windDir / 10);
+    runway = `Pista em uso ${String(runwayNum === 0 ? 36 : runwayNum).padStart(2, '0')}`;
+  } else if (windCalmMatch) {
+    wind = 'Vento calmo';
+    runway = 'Consulte a torre para pista em uso';
+  }
+  
+  // Parse visibility
+  const visMatch = metarContext.match(/Visibilidade:\s*(\d+)\s*(metros?|m|km|quilômetros?)/i);
+  const cavokMatch = metarContext.match(/CAVOK/i);
+  if (cavokMatch) {
+    visibility = 'CAVOK';
+    ceiling = '';
+  } else if (visMatch) {
+    const visValue = parseInt(visMatch[1]);
+    const visUnit = visMatch[2].toLowerCase();
+    if (visUnit.startsWith('k') || visUnit.startsWith('q')) {
+      visibility = `Visibilidade ${visValue} quilômetros`;
+    } else {
+      visibility = visValue >= 9999 
+        ? 'Visibilidade maior que 10 quilômetros'
+        : `Visibilidade ${visValue} metros`;
+    }
+  }
+  
+  // Parse ceiling/clouds
+  const cloudPatterns = metarContext.match(/(Nuvens?|Teto|Ceiling|Clouds?):\s*([^\n]+)/i);
+  if (cloudPatterns && !cavokMatch) {
+    const cloudInfo = cloudPatterns[2].trim();
+    if (cloudInfo.toLowerCase().includes('clr') || cloudInfo.toLowerCase().includes('skc') || cloudInfo.toLowerCase().includes('céu claro')) {
+      ceiling = 'Céu claro';
+    } else {
+      ceiling = `Nuvens: ${cloudInfo}`;
+    }
+  }
+  
+  // Parse temperature and dewpoint
+  const tempMatch = metarContext.match(/Temperatura:\s*(-?\d+)[°º]?C?/i);
+  const dewMatch = metarContext.match(/(?:Ponto de orvalho|Dewpoint):\s*(-?\d+)[°º]?C?/i);
+  if (tempMatch) {
+    const temp = tempMatch[1];
+    const dew = dewMatch ? dewMatch[1] : null;
+    tempDewpoint = dew 
+      ? `Temperatura ${temp}, ponto de orvalho ${dew}`
+      : `Temperatura ${temp} graus`;
+  }
+  
+  // Parse QNH
+  const qnhMatch = metarContext.match(/(?:QNH|Altímetro):\s*(\d{4})\s*(hPa|hectopascals?)?/i);
+  const altMatch = metarContext.match(/(?:Altimeter|QNH):\s*(\d{2})\.?(\d{2})/i);
+  if (qnhMatch) {
+    qnh = `QNH ${qnhMatch[1]} hectopascals`;
+  } else if (altMatch) {
+    // Convert inHg to hPa if needed
+    const inhg = parseFloat(`${altMatch[1]}.${altMatch[2]}`);
+    const hpa = Math.round(inhg * 33.8639);
+    qnh = `QNH ${hpa} hectopascals`;
+  }
+  
+  // Parse weather conditions (rain, fog, etc)
+  const wxPatterns = [
+    { pattern: /chuva\s*(forte|fraca|moderada)?/i, text: 'Chuva' },
+    { pattern: /(rain|ra)\s*(heavy|light)?/i, text: 'Chuva' },
+    { pattern: /névoa|mist|br/i, text: 'Névoa' },
+    { pattern: /nevoeiro|fog|fg/i, text: 'Nevoeiro' },
+    { pattern: /trovoada|thunder|ts/i, text: 'Trovoada' },
+  ];
+  const wxConditions: string[] = [];
+  for (const wx of wxPatterns) {
+    if (wx.pattern.test(metarContext)) {
+      wxConditions.push(wx.text.toLowerCase());
+    }
+  }
+  if (wxConditions.length > 0) {
+    conditions = wxConditions.join(' e ');
+  }
+  
+  // Montar mensagem ATIS
+  const atisLines = [
+    `${airportName} informação ${infoLetter}, hora ${zuluTime} Zulu.`,
+    runway ? `${runway}.` : null,
+    `${wind}.`,
+    visibility !== 'CAVOK' ? `${visibility}${conditions ? `, ${conditions}` : ''}.` : 'CAVOK.',
+    ceiling && visibility !== 'CAVOK' ? `${ceiling}.` : null,
+    tempDewpoint ? `${tempDewpoint}.` : null,
+    qnh ? `${qnh}.` : null,
+    `Ao contato inicial, informe ter ${infoLetter}.`,
+  ].filter(Boolean);
+  
+  return `📡 ATIS ${airportIcao}:
+
+"${atisLines.join('\n')}"`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -47,6 +188,17 @@ serve(async (req) => {
       selectedModel,
       selectedFrequency,
     }: ChatRequest = await req.json();
+
+    // ATIS: Gerar resposta automática formatada (não precisa de IA)
+    if (selectedFrequency?.frequencyType === 'ATIS') {
+      const atisResponse = generateAtisMessage(flightData, metarContext, selectedFrequency);
+      return new Response(JSON.stringify({ 
+        atcResponse: atisResponse, 
+        isWaiting: false 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Build frequency context for prompt
     let frequencyContext = '';
