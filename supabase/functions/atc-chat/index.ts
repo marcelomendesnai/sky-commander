@@ -255,29 +255,45 @@ function parseATCResponse(
   const result: { atcResponse?: string; evaluatorResponse?: string; isWaiting?: boolean } = {};
 
   // Check for waiting scenarios - Portuguese AND English patterns
+  // IMPORTANTE: Padrões devem ser específicos para INSTRUÇÕES DE ESPERA reais,
+  // não apenas menções casuais das palavras
   const waitingPatterns = [
-    // English patterns
+    // English patterns - instruções específicas
     /hold (position|short)/i,
-    /traffic (on final|on approach|in sight)/i,
+    /hold at/i,
+    /traffic (on final|on approach|landing)/i,
     /stand by/i,
-    /expect (delay|holding)/i,
-    /sequence/i,
-    /behind/i,
-    /number \d+ (to|for)/i,
-    // Portuguese patterns
+    /expect (delay|holding|further)/i,
+    /behind (the |a )?\w+/i,
+    /number \d+ (to land|for|in sequence)/i,
+    
+    // Portuguese patterns - instruções específicas
     /mantenha posição/i,
-    /aguarde/i,
-    /espere/i,
-    /tráfego/i,
+    /mantenha curta/i,
+    /aguarde (na|em|o |a |autorização)/i,
+    /espere (na|em|o |a )/i,
     /pista em uso/i,
-    /sequência/i,
-    /número \d+/i,
-    /após (o |a )?(tráfego|pouso|decolagem)/i,
-    /autorização.*pendente/i,
-    /aguardando/i,
+    /sequência para/i,
+    /número \d+ para/i,
+    /após (o |a )?(tráfego|pouso|decolagem|aeronave)/i,
+    /autorização pendente/i,
+    /aguardando (slot|autorização|liberação)/i,
+    /livre para (esperar|manter)/i,
+    /reporte pronto/i,
   ];
+
+  // Excluir falsos positivos comuns
+  const falsePositivePatterns = [
+    /Tráfego [A-Z]{4}/i,           // "Tráfego Guarulhos" (callsign)
+    /informo tráfego/i,            // Informação de tráfego, não instrução
+    /tráfego (visual|à vista)/i,   // Reporte de tráfego avistado
+    /bom dia|boa tarde|boa noite/i, // Saudações
+  ];
+
+  const isWaitingInstruction = waitingPatterns.some(pattern => pattern.test(content));
+  const isFalsePositive = falsePositivePatterns.some(pattern => pattern.test(content));
   
-  result.isWaiting = waitingPatterns.some(pattern => pattern.test(content));
+  result.isWaiting = isWaitingInstruction && !isFalsePositive;
 
   if (talkingTo === 'evaluator') {
     // When talking to evaluator, everything is evaluator response
