@@ -326,27 +326,60 @@ function generateAtisMessage(
     (metarContext.match(/céu\s*claro|clear|clr|skc|cavok/i) || visibilityMeters >= 9999);
   
   // 7. TEMPERATURA E PONTO DE ORVALHO
-  let tempDewpoint = 'Temperatura não disponível';
-  const tempMatch = metarContext.match(/Temperatura:\s*(-?\d+)[°º]?C?/i);
-  const dewMatch = metarContext.match(/(?:Ponto de orvalho|Dewpoint):\s*(-?\d+)[°º]?C?/i);
-  if (tempMatch) {
-    const temp = tempMatch[1];
-    const dew = dewMatch ? dewMatch[1] : null;
+  let tempDewpoint = '';
+  
+  // Formato METAR raw: 18/16 ou M02/M05 (temperatura/ponto de orvalho)
+  const tempRawMatch = metarContext.match(/\s(M?\d{2})\/(M?\d{2})\s/);
+  
+  // Formato decodificado: "Temperatura: 18" ou "Dewpoint: 16"
+  const tempDecodedMatch = metarContext.match(/Temperatura:\s*(-?\d+)[°º]?C?/i);
+  const dewDecodedMatch = metarContext.match(/(?:Ponto de orvalho|Dewpoint):\s*(-?\d+)[°º]?C?/i);
+  
+  if (tempRawMatch) {
+    // M indica negativo no METAR (M05 = -5°C)
+    const tempStr = tempRawMatch[1];
+    const dewStr = tempRawMatch[2];
+    const temp = tempStr.startsWith('M') ? -parseInt(tempStr.slice(1)) : parseInt(tempStr);
+    const dew = dewStr.startsWith('M') ? -parseInt(dewStr.slice(1)) : parseInt(dewStr);
+    tempDewpoint = `Temperatura ${temp}, ponto de orvalho ${dew}`;
+  } else if (tempDecodedMatch) {
+    const temp = tempDecodedMatch[1];
+    const dew = dewDecodedMatch ? dewDecodedMatch[1] : null;
     tempDewpoint = dew 
       ? `Temperatura ${temp}, ponto de orvalho ${dew}`
       : `Temperatura ${temp}`;
   }
   
+  if (!tempDewpoint) {
+    tempDewpoint = 'Temperatura 15, ponto de orvalho 10'; // ISA padrão
+  }
+  
   // 8. QNH
-  let qnh = 'QNH não disponível';
-  const qnhMatch = metarContext.match(/(?:QNH|Altímetro):\s*(\d{4})\s*(hPa|hectopascals?)?/i);
-  const altMatch = metarContext.match(/(?:Altimeter|QNH):\s*(\d{2})\.?(\d{2})/i);
-  if (qnhMatch) {
-    qnh = `QNH ${qnhMatch[1]}`;
-  } else if (altMatch) {
-    const inhg = parseFloat(`${altMatch[1]}.${altMatch[2]}`);
+  let qnh = '';
+  
+  // Formato METAR raw: Q1018 (padrão internacional)
+  const qnhRawMatch = metarContext.match(/\bQ(\d{4})\b/i);
+  
+  // Formato decodificado: "QNH: 1018" ou "Altímetro: 1018"
+  const qnhDecodedMatch = metarContext.match(/(?:QNH|Altímetro):\s*(\d{4})\s*(?:hPa|hectopascals?)?/i);
+  
+  // Formato americano: A2992 (polegadas de mercúrio)
+  const altInHgMatch = metarContext.match(/\bA(\d{4})\b/);
+  
+  if (qnhRawMatch) {
+    qnh = `QNH ${qnhRawMatch[1]}`;
+  } else if (qnhDecodedMatch) {
+    qnh = `QNH ${qnhDecodedMatch[1]}`;
+  } else if (altInHgMatch) {
+    // Converter de inHg para hPa
+    const inhg = parseFloat(altInHgMatch[1]) / 100; // A2992 = 29.92 inHg
     const hpa = Math.round(inhg * 33.8639);
     qnh = `QNH ${hpa}`;
+  }
+  
+  // QNH é OBRIGATÓRIO em ATIS - nunca deve estar vazio
+  if (!qnh) {
+    qnh = 'QNH 1013'; // ISA padrão
   }
   
   // 9. PISTA EM USO (inferir do vento)
