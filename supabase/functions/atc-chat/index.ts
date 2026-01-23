@@ -157,7 +157,19 @@ function buildPhaseContext(
   const airportRef = phaseInfo.airport === 'departure' ? 'SAÍDA' : 
                      phaseInfo.airport === 'arrival' ? 'DESTINO' : 'ROTA';
   
+  // CRITICAL: Priority warning at the top
   let context = `
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ ⚠️  ATENÇÃO CRÍTICA - PRIORIDADE MÁXIMA                                      ║
+║                                                                              ║
+║ O ESTADO ABAIXO reflete a situação ATUAL do piloto.                          ║
+║ Se houver CONFLITO com o histórico de mensagens, o estado abaixo é CORRETO.  ║
+║ O histórico pode estar DESATUALIZADO (piloto mudou de fase).                 ║
+║                                                                              ║
+║ VOCÊ DEVE responder como o setor apropriado para a FASE ATUAL,               ║
+║ NÃO para a fase que aparece no histórico de mensagens.                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
 📍 **FASE ATUAL DO VOO: ${phaseInfo.label}**
 - Aeroporto de referência: ${airportRef}
 - Serviço esperado (${flightType}): ${expectedServices.includes('NONE') ? 'Nenhum' : expectedServices.join(' ou ')}
@@ -174,6 +186,11 @@ function buildPhaseContext(
 
   // Validation rules for the AI
   context += `
+**REGRA DE OURO**: Quando o piloto muda de fase (ex: de "Alinhado na Pista" para "Subida Inicial"), 
+você DEVE responder como o setor apropriado para a NOVA fase. 
+Exemplo: Se a fase é "Subida Inicial" e o setor esperado é "TWR" ou "DEP", 
+responda como Torre ou Decolagem, NÃO como se ainda estivesse no solo.
+
 **VALIDAÇÃO DE FASE - REGRAS PARA O ATC/AVALIADOR:**
 
 1. Se a fase exige SILÊNCIO (${phaseInfo.silenceRequired ? 'ESTA FASE EXIGE' : 'esta fase não exige'}):
