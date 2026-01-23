@@ -1,9 +1,35 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// Allowed origins for CORS - restrict to known domains
+const allowedOrigins = [
+  'https://id-preview--d76a48f9-378e-4c35-9098-1135004c1717.lovable.app',
+  'https://d76a48f9-378e-4c35-9098-1135004c1717.lovable.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://localhost:3000',
+];
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || '';
+  const isAllowed = allowedOrigins.some(allowed => 
+    origin === allowed || origin.endsWith('.lovable.app')
+  );
+  
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin : '',
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
+
+function validateOrigin(req: Request): boolean {
+  const origin = req.headers.get('origin') || '';
+  // Allow requests without origin (same-origin, mobile apps, etc.)
+  if (!origin) return true;
+  return allowedOrigins.some(allowed => 
+    origin === allowed || origin.endsWith('.lovable.app')
+  );
+}
 
 // Input validation limits
 const MAX_MESSAGE_LENGTH = 5000;
@@ -618,8 +644,19 @@ function generateAtisMessage(
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Validate origin for non-OPTIONS requests
+  if (!validateOrigin(req)) {
+    console.warn("Blocked request from unauthorized origin:", req.headers.get('origin'));
+    return new Response(
+      JSON.stringify({ error: "Origem não autorizada" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
