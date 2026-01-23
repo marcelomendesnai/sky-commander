@@ -171,10 +171,12 @@ export interface FlightPhaseInfo {
   communicationAllowed: boolean;
   silenceRequired: boolean;
   airport: 'departure' | 'arrival' | 'enroute';
+  atcInitiatesContact: boolean; // Se true, ATC chama o piloto nesta fase
   
   // Validation messages
   silenceMessage?: string;
   expectedServiceHint?: string;
+  atcContactMessage?: string; // Mensagem contextual quando ATC inicia contato
 }
 
 // All flight phases with their validation rules
@@ -189,6 +191,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: false,
     silenceRequired: true,
     airport: 'departure',
+    atcInitiatesContact: false,
     silenceMessage: 'Motor desligado. Nenhuma comunicação deve ser iniciada.',
   },
   {
@@ -204,6 +207,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'departure',
+    atcInitiatesContact: false,
     expectedServiceHint: 'VFR: ATIS → SOLO | IFR: ATIS → CLR → SOLO',
   },
   {
@@ -216,6 +220,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'departure',
+    atcInitiatesContact: false,
     expectedServiceHint: 'Em comunicação com SOLO (Ground)',
   },
   {
@@ -228,6 +233,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'departure',
+    atcInitiatesContact: false,
     expectedServiceHint: 'Contatar TORRE para autorização de decolagem',
   },
   {
@@ -240,7 +246,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'departure',
+    atcInitiatesContact: true,
     expectedServiceHint: 'Aguardando autorização final da TORRE',
+    atcContactMessage: 'Aguardando autorização de decolagem...',
   },
   {
     id: 'TAKEOFF_ROLL',
@@ -252,6 +260,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: false,
     silenceRequired: true,
     airport: 'departure',
+    atcInitiatesContact: false,
     silenceMessage: 'Corrida de decolagem. Silêncio absoluto - concentração total.',
   },
   {
@@ -264,7 +273,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'departure',
+    atcInitiatesContact: true,
     expectedServiceHint: 'TORRE pode transferir para DEP',
+    atcContactMessage: 'Aguardando transferência para DEP...',
   },
   {
     id: 'LEAVING_TMA',
@@ -276,7 +287,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'enroute',
+    atcInitiatesContact: true,
     expectedServiceHint: 'IFR: DEP/CTR contínuo | VFR: pode se despedir do radar',
+    atcContactMessage: 'Aguardando transferência para CTR...',
   },
   {
     id: 'CRUISE',
@@ -288,7 +301,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'enroute',
+    atcInitiatesContact: true,
     expectedServiceHint: 'IFR: CTR | VFR: apenas se necessário',
+    atcContactMessage: 'Aguardando contato do CTR...',
   },
   {
     id: 'DESCENT',
@@ -300,7 +315,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'enroute',
+    atcInitiatesContact: true,
     expectedServiceHint: 'CTR → APP, recebe QNH de destino',
+    atcContactMessage: 'Aguardando autorização de descida...',
   },
   {
     id: 'ENTERING_TMA',
@@ -312,7 +329,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'arrival',
+    atcInitiatesContact: true,
     expectedServiceHint: 'Contato obrigatório com APP',
+    atcContactMessage: 'Aguardando transferência para APP...',
   },
   {
     id: 'APPROACH',
@@ -324,7 +343,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'arrival',
+    atcInitiatesContact: true,
     expectedServiceHint: 'IFR: vetores e autorização | VFR: instruções visuais',
+    atcContactMessage: 'Aguardando vetores/sequenciamento...',
   },
   {
     id: 'FINAL',
@@ -336,7 +357,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'arrival',
+    atcInitiatesContact: true,
     expectedServiceHint: 'Transferido para TORRE de destino',
+    atcContactMessage: 'Aguardando transferência para TWR...',
   },
   {
     id: 'LANDING',
@@ -348,6 +371,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: false,
     silenceRequired: true,
     airport: 'arrival',
+    atcInitiatesContact: false,
     silenceMessage: 'Pouso em andamento. Silêncio - apenas readback se necessário.',
   },
   {
@@ -360,7 +384,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: false,
     silenceRequired: true,
     airport: 'arrival',
+    atcInitiatesContact: true,
     silenceMessage: 'Rollout. Aguardar desacelerar, TORRE pode instruir saída.',
+    atcContactMessage: 'Aguardando instrução de saída de pista...',
   },
   {
     id: 'TAXI_IN',
@@ -372,7 +398,9 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'arrival',
+    atcInitiatesContact: true,
     expectedServiceHint: 'TORRE instrui → contato com SOLO de destino',
+    atcContactMessage: 'Aguardando transferência para GND...',
   },
   {
     id: 'PARKING_ARRIVED',
@@ -384,6 +412,7 @@ export const FLIGHT_PHASES: FlightPhaseInfo[] = [
     communicationAllowed: true,
     silenceRequired: false,
     airport: 'arrival',
+    atcInitiatesContact: false,
     expectedServiceHint: 'Fim das comunicações. Debriefing disponível.',
   },
 ];
