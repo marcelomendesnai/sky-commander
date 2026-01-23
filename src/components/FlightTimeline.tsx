@@ -147,10 +147,33 @@ export function FlightTimeline({ currentPhase, onChange, flightType }: FlightTim
   };
 
   return (
-    <div className="space-y-1.5 px-2">
-      {/* === LINE 1: Navigation + Current/Next Phases === */}
+    <div className="space-y-1 px-2">
+      
+      {/* === LINHA 1: Fase Atual === */}
+      <div className={`text-center font-mono text-sm font-semibold ${getPhaseTextColor(currentPhaseInfo)}`}>
+        <span className="text-lg mr-1.5">{currentPhaseInfo?.icon}</span>
+        <span className="hidden xs:inline">{currentPhaseInfo?.label}</span>
+        <span className="xs:hidden">{currentPhaseInfo?.shortLabel}</span>
+      </div>
+
+      {/* === LINHA 2: Próxima Fase === */}
+      <div className="text-center text-xs text-muted-foreground">
+        {nextPhase ? (
+          <span className="flex items-center justify-center gap-1">
+            <ArrowRight className="w-3 h-3" />
+            <span className="text-base">{nextPhase.icon}</span>
+            <span className="hidden xs:inline">{nextPhase.label}</span>
+            <span className="xs:hidden">{nextPhase.shortLabel}</span>
+          </span>
+        ) : (
+          <span>✓ Fim do Voo</span>
+        )}
+      </div>
+
+      {/* === LINHA 3: Timeline com Setas nas Extremidades === */}
       <div className="flex items-center gap-1">
-        {/* Back Button */}
+        
+        {/* Botão Voltar */}
         <button
           type="button"
           onClick={goToPreviousPhase}
@@ -163,47 +186,85 @@ export function FlightTimeline({ currentPhase, onChange, flightType }: FlightTim
           <ChevronLeft className="w-4 h-4" />
         </button>
 
-        {/* Center: Current Phase → Next Phase */}
-        <div className="flex-1 flex items-center justify-center gap-1.5 
-                        min-w-0 overflow-hidden">
-          {/* Current Phase */}
-          <div className={`flex items-center gap-1 font-mono text-xs 
-                           font-semibold truncate ${getPhaseTextColor(currentPhaseInfo)}`}>
-            <span className="text-base shrink-0">{currentPhaseInfo?.icon}</span>
-            {/* Full label on sm+, short label on xs-sm, icon only on <xs */}
-            <span className="truncate hidden sm:inline">
-              {currentPhaseInfo?.label}
-            </span>
-            <span className="truncate hidden xs:inline sm:hidden">
-              {currentPhaseInfo?.shortLabel}
-            </span>
-          </div>
-
-          {/* Arrow → Next Phase */}
-          {nextPhase && (
-            <>
-              <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-              <div className="flex items-center gap-1 text-muted-foreground 
-                              text-xs truncate">
-                <span className="text-base shrink-0">{nextPhase.icon}</span>
-                {/* Full label on sm+, short label on xs-sm, hidden on <xs */}
-                <span className="truncate hidden sm:inline">
-                  {nextPhase.label}
-                </span>
-                <span className="truncate hidden xs:inline sm:hidden">
-                  {nextPhase.shortLabel}
-                </span>
-              </div>
-            </>
-          )}
+        {/* Track draggável */}
+        <div 
+          ref={trackRef}
+          className="relative flex-1 h-8 cursor-pointer select-none touch-none"
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Background track */}
+          <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 
+                          rounded-full bg-gradient-to-r from-atc-green/20 
+                          via-atc-amber/20 to-atc-cyan/20" />
           
-          {/* Last phase indicator */}
-          {!nextPhase && (
-            <span className="text-xs text-muted-foreground">✓ Fim</span>
-          )}
+          {/* Progress track */}
+          <div 
+            className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full 
+                       bg-gradient-to-r from-atc-green via-atc-amber to-atc-cyan 
+                       transition-all duration-150"
+            style={{ width: `${currentPosition}%` }}
+          />
+
+          {/* Phase markers */}
+          {FLIGHT_PHASES.map((phase, index) => {
+            const isPassed = index < currentIndex;
+            const isActive = phase.id === currentPhase;
+            
+            return (
+              <button
+                key={phase.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePhaseClick(phase.id);
+                }}
+                className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 
+                            rounded-full transition-all duration-150
+                            ${isActive 
+                              ? 'w-3 h-3 ring-2 ring-offset-1 ring-offset-background' 
+                              : 'w-2 h-2 hover:scale-125'
+                            }
+                            ${isPassed || isActive 
+                              ? getPhaseColor(phase) 
+                              : 'bg-muted-foreground/30'
+                            }
+                            ${isActive ? getPhaseRingColor(phase, true) : ''}
+                            `}
+                style={{ left: `${phase.position}%` }}
+                title={phase.label}
+              />
+            );
+          })}
+
+          {/* Airplane indicator */}
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 
+                        transition-all duration-200 pointer-events-none
+                        ${isDragging ? 'scale-110' : ''}`}
+            style={{ left: `${currentPosition}%` }}
+          >
+            <div className={`flex items-center justify-center w-6 h-6 rounded-full 
+                             shadow-md border border-current/20
+                             ${currentPhaseInfo?.silenceRequired 
+                               ? 'bg-destructive/20 text-destructive' 
+                               : currentPhaseInfo?.airport === 'departure'
+                                 ? 'bg-atc-green/20 text-atc-green'
+                                 : currentPhaseInfo?.airport === 'arrival'
+                                   ? 'bg-atc-cyan/20 text-atc-cyan'
+                                   : 'bg-atc-amber/20 text-atc-amber'
+                             }`}>
+              <Plane 
+                className="w-3.5 h-3.5" 
+                style={{ transform: currentPosition > 50 ? 'scaleX(-1)' : 'none' }} 
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Forward Button */}
+        {/* Botão Avançar */}
         <button
           type="button"
           onClick={goToNextPhase}
@@ -217,88 +278,9 @@ export function FlightTimeline({ currentPhase, onChange, flightType }: FlightTim
         </button>
       </div>
 
-      {/* === LINE 2: Visual Timeline (keeps drag) === */}
-      <div 
-        ref={trackRef}
-        className="relative h-8 cursor-pointer select-none touch-none"
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {/* Background track */}
-        <div className="absolute top-1/2 left-2 right-2 h-1 -translate-y-1/2 
-                        rounded-full bg-gradient-to-r from-atc-green/20 
-                        via-atc-amber/20 to-atc-cyan/20" />
-        
-        {/* Progress track */}
-        <div 
-          className="absolute top-1/2 left-2 h-1 -translate-y-1/2 rounded-full 
-                     bg-gradient-to-r from-atc-green via-atc-amber to-atc-cyan 
-                     transition-all duration-150"
-          style={{ width: `${Math.max(0, currentPosition - 2)}%` }}
-        />
-
-        {/* Phase markers - smaller circles */}
-        {FLIGHT_PHASES.map((phase, index) => {
-          const isPassed = index < currentIndex;
-          const isActive = phase.id === currentPhase;
-          
-          return (
-            <button
-              key={phase.id}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePhaseClick(phase.id);
-              }}
-              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 
-                          rounded-full transition-all duration-150
-                          ${isActive 
-                            ? 'w-3 h-3 ring-2 ring-offset-1 ring-offset-background' 
-                            : 'w-2 h-2 hover:scale-125'
-                          }
-                          ${isPassed || isActive 
-                            ? getPhaseColor(phase) 
-                            : 'bg-muted-foreground/30'
-                          }
-                          ${isActive ? getPhaseRingColor(phase, true) : ''}
-                          `}
-              style={{ left: `calc(${phase.position}% * 0.96 + 2%)` }}
-              title={phase.label}
-            />
-          );
-        })}
-
-        {/* Airplane indicator */}
-        <div
-          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 
-                      transition-all duration-200 pointer-events-none
-                      ${isDragging ? 'scale-110' : ''}`}
-          style={{ left: `calc(${currentPosition}% * 0.96 + 2%)` }}
-        >
-          <div className={`flex items-center justify-center w-6 h-6 rounded-full 
-                           shadow-md border border-current/20
-                           ${currentPhaseInfo?.silenceRequired 
-                             ? 'bg-destructive/20 text-destructive' 
-                             : currentPhaseInfo?.airport === 'departure'
-                               ? 'bg-atc-green/20 text-atc-green'
-                               : currentPhaseInfo?.airport === 'arrival'
-                                 ? 'bg-atc-cyan/20 text-atc-cyan'
-                                 : 'bg-atc-amber/20 text-atc-amber'
-                           }`}>
-            <Plane 
-              className="w-3.5 h-3.5" 
-              style={{ transform: currentPosition > 50 ? 'scaleX(-1)' : 'none' }} 
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* === LINE 3: Expected Service / Silence === */}
+      {/* === LINHA 4: Status === */}
       <div className="flex items-center justify-between text-[10px] 
                       font-mono text-muted-foreground px-1">
-        {/* Airport tag */}
         <span className="flex items-center gap-1">
           {currentPhaseInfo?.airport === 'departure' && (
             <span className="text-atc-green font-semibold">DEP</span>
@@ -311,7 +293,6 @@ export function FlightTimeline({ currentPhase, onChange, flightType }: FlightTim
           )}
         </span>
         
-        {/* Communication status */}
         <span className={currentPhaseInfo?.silenceRequired ? 'text-destructive font-semibold' : ''}>
           {currentPhaseInfo?.silenceRequired 
             ? '🔇 Silêncio obrigatório'
