@@ -30,7 +30,8 @@ export function MetarScreen() {
   if (!flightData) return null;
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl animate-fade-in">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="container mx-auto px-4 py-8 max-w-5xl animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-center gap-4 mb-8">
         <div className="text-center">
@@ -70,12 +71,13 @@ export function MetarScreen() {
         <AirportInfoDisplay airport={arrivalAirport} label="AEROPORTO CHEGADA" color="cyan" />
       </div>
 
-      {/* Continue Button */}
-      <div className="mt-8 flex justify-center">
-        <AtcButton onClick={handleStartChat} size="lg" className="gap-3">
-          <ChevronDown className="w-5 h-5" />
-          INICIAR COMUNICAÇÃO
-        </AtcButton>
+        {/* Continue Button */}
+        <div className="mt-8 flex justify-center">
+          <AtcButton onClick={handleStartChat} size="lg" className="gap-3">
+            <ChevronDown className="w-5 h-5" />
+            INICIAR COMUNICAÇÃO
+          </AtcButton>
+        </div>
       </div>
     </div>
   );
