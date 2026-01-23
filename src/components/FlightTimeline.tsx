@@ -150,23 +150,21 @@ export function FlightTimeline({ currentPhase, onChange, flightType }: FlightTim
     <div className="space-y-1 px-2">
       
       {/* === LINHA 1: Fase Atual === */}
-      <div className={`text-center font-mono text-sm font-semibold ${getPhaseTextColor(currentPhaseInfo)}`}>
-        <span className="text-lg mr-1.5">{currentPhaseInfo?.icon}</span>
-        <span className="hidden xs:inline">{currentPhaseInfo?.label}</span>
-        <span className="xs:hidden">{currentPhaseInfo?.shortLabel}</span>
+      <div className={`flex items-center gap-1.5 font-mono text-sm font-semibold ${getPhaseTextColor(currentPhaseInfo)}`}>
+        <span className="text-lg">{currentPhaseInfo?.icon}</span>
+        <span>{currentPhaseInfo?.label}</span>
       </div>
 
       {/* === LINHA 2: Próxima Fase === */}
-      <div className="text-center text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground">
         {nextPhase ? (
-          <span className="flex items-center justify-center gap-1">
+          <span className="flex items-center gap-1">
             <ArrowRight className="w-3 h-3" />
             <span className="text-base">{nextPhase.icon}</span>
-            <span className="hidden xs:inline">{nextPhase.label}</span>
-            <span className="xs:hidden">{nextPhase.shortLabel}</span>
+            <span>{nextPhase.label}</span>
           </span>
         ) : (
-          <span>✓ Fim do Voo</span>
+          <span className="flex items-center gap-1">✓ Fim do Voo</span>
         )}
       </div>
 
