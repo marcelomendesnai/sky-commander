@@ -163,6 +163,15 @@ export function ChatScreen() {
     scrollToBottom();
   }, [messages]);
 
+  // Auto-activate "ATC ME CHAMA" when entering phases where ATC initiates contact
+  useEffect(() => {
+    const phaseInfo = getFlightPhaseInfo(currentFlightPhase);
+    
+    if (phaseInfo?.atcInitiatesContact && !phaseInfo.silenceRequired && talkingTo === 'atc') {
+      setIsWaiting(true);
+    }
+  }, [currentFlightPhase, talkingTo]);
+
   const playTTS = async (text: string) => {
     if (!settings.elevenLabsApiKey || !audioEnabled) return;
 
@@ -444,7 +453,7 @@ export function ChatScreen() {
           </div>
 
           {/* Waiting button */}
-          {isWaiting && !isLoading && (
+          {isWaiting && !isLoading && talkingTo === 'atc' && (
             <div className="px-4 py-3 border-t border-atc-amber/30 bg-atc-amber/10">
               <div className="container mx-auto max-w-3xl">
                 <button
@@ -453,7 +462,9 @@ export function ChatScreen() {
                 >
                   <Clock className="w-5 h-5" />
                   <span>⏳ ATC ME CHAMA</span>
-                  <span className="text-xs opacity-75">(clique quando situação resolver)</span>
+                  <span className="text-xs opacity-75">
+                    {getFlightPhaseInfo(currentFlightPhase)?.atcContactMessage || '(clique quando situação resolver)'}
+                  </span>
                 </button>
               </div>
             </div>
