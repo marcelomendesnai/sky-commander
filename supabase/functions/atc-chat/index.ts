@@ -289,54 +289,69 @@ function generateAtisMessage(
   const hasPhenomena = phenomena.length > 0;
   const phenomenaLine = hasPhenomena ? phenomena.join(' e ').charAt(0).toUpperCase() + phenomena.join(' e ').slice(1) : null;
   
-  // 6. NUVENS
-  let clouds: string[] = [];
+  // 6. NUVENS - parsing unificado com deduplicação
+  const cloudLayers: Map<number, string> = new Map(); // altitude -> tipo (maior prioridade)
   let hasSignificantClouds = false;
-  
-  // Parse cloud patterns: FEW, SCT, BKN, OVC with altitude
-  const cloudPatterns = metarContext.matchAll(/(poucas|dispersas|quebradas?|encoberto|few|sct|bkn|ovc)\s*(?:a\s*)?(\d+)\s*(pés|ft|feet)?/gi);
-  for (const match of cloudPatterns) {
-    const type = match[1].toLowerCase();
-    const altitude = parseInt(match[2]);
-    let typeText = '';
+
+  // Prioridade: OVC > BKN > SCT > FEW
+  const cloudPriority: Record<string, number> = {
+    'OVC': 4, 'encoberto': 4,
+    'BKN': 3, 'quebradas': 3, 'quebrado': 3,
+    'SCT': 2, 'dispersas': 2,
+    'FEW': 1, 'poucas': 1
+  };
+
+  // Formato METAR padrão: FEW025 SCT070 BKN120 OVC150
+  const metarCloudPattern = metarContext.matchAll(/(FEW|SCT|BKN|OVC)(\d{3})/gi);
+  for (const match of metarCloudPattern) {
+    const type = match[1].toUpperCase();
+    const altitude = parseInt(match[2]) * 100; // METAR usa centenas de pés
+    const priority = cloudPriority[type] || 0;
     
-    if (type === 'few' || type === 'poucas') typeText = 'poucas nuvens';
-    else if (type === 'sct' || type === 'dispersas') typeText = 'nuvens dispersas';
-    else if (type === 'bkn' || type.startsWith('quebrad')) {
-      typeText = 'nuvens quebradas';
-      hasSignificantClouds = true;
-    } else if (type === 'ovc' || type === 'encoberto') {
-      typeText = 'encoberto';
-      hasSignificantClouds = true;
-    }
+    if (type === 'BKN' || type === 'OVC') hasSignificantClouds = true;
     
-    if (typeText) {
-      clouds.push(`${typeText} ${altitude} pés`);
-    }
-  }
-  
-  // Também verificar formato "Nuvens: BKN007 OVC013"
-  const cloudRaw = metarContext.match(/(?:Nuvens?|Clouds?):\s*([^\n]+)/i);
-  if (cloudRaw && clouds.length === 0) {
-    const rawClouds = cloudRaw[1];
-    if (/bkn|quebrad/i.test(rawClouds)) hasSignificantClouds = true;
-    if (/ovc|encoberto/i.test(rawClouds)) hasSignificantClouds = true;
-    
-    // Parse formato METAR: BKN007 OVC013
-    const metarClouds = rawClouds.matchAll(/(FEW|SCT|BKN|OVC)(\d{3})/gi);
-    for (const mc of metarClouds) {
-      const type = mc[1].toUpperCase();
-      const altitude = parseInt(mc[2]) * 100; // METAR altitude em centenas de pés
-      let typeText = '';
-      
-      if (type === 'FEW') typeText = 'poucas nuvens';
-      else if (type === 'SCT') typeText = 'nuvens dispersas';
-      else if (type === 'BKN') { typeText = 'nuvens quebradas'; hasSignificantClouds = true; }
-      else if (type === 'OVC') { typeText = 'encoberto'; hasSignificantClouds = true; }
-      
-      if (typeText) clouds.push(`${typeText} ${altitude} pés`);
+    // Só substitui se prioridade maior
+    const existing = cloudLayers.get(altitude);
+    if (!existing || priority > cloudPriority[existing]) {
+      cloudLayers.set(altitude, type);
     }
   }
+
+  // Formato decodificado: "nuvens quebradas a 2500 pés" ou "BKN 2500"
+  const decodedCloudPattern = metarContext.matchAll(/(poucas|dispersas|quebrad\w*|encoberto|FEW|SCT|BKN|OVC)\s*(?:a\s*)?(\d{3,5})\s*(?:pés|ft|feet)?/gi);
+  for (const match of decodedCloudPattern) {
+    const typeRaw = match[1];
+    let altitude = parseInt(match[2]);
+    
+    // Se altitude < 500, provavelmente está em centenas (formato METAR)
+    if (altitude < 500) {
+      altitude *= 100;
+    }
+    
+    // Normalizar tipo para sigla ICAO
+    let normalizedType = 'SCT';
+    const typeLower = typeRaw.toLowerCase();
+    if (typeLower === 'few' || typeLower === 'poucas') normalizedType = 'FEW';
+    else if (typeLower === 'sct' || typeLower === 'dispersas') normalizedType = 'SCT';
+    else if (typeLower.startsWith('quebrad') || typeLower === 'bkn') normalizedType = 'BKN';
+    else if (typeLower === 'encoberto' || typeLower === 'ovc') normalizedType = 'OVC';
+    
+    if (normalizedType === 'BKN' || normalizedType === 'OVC') hasSignificantClouds = true;
+    
+    const priority = cloudPriority[normalizedType] || 0;
+    const existing = cloudLayers.get(altitude);
+    if (!existing || priority > cloudPriority[existing]) {
+      cloudLayers.set(altitude, normalizedType);
+    }
+  }
+
+  // Ordenar por altitude e formatar (max 3 camadas)
+  const sortedClouds = Array.from(cloudLayers.entries())
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, 3)
+    .map(([alt, type]) => `${type} ${alt.toLocaleString('pt-BR')} ft`);
+  
+  const clouds = sortedClouds;
   
   // Verificar se céu claro (apenas se não há fenômenos nem nuvens)
   const isClearSky = !hasPhenomena && !hasSignificantClouds && clouds.length === 0 &&
@@ -358,17 +373,17 @@ function generateAtisMessage(
     const dewStr = tempRawMatch[2];
     const temp = tempStr.startsWith('M') ? -parseInt(tempStr.slice(1)) : parseInt(tempStr);
     const dew = dewStr.startsWith('M') ? -parseInt(dewStr.slice(1)) : parseInt(dewStr);
-    tempDewpoint = `Temperatura ${temp}, ponto de orvalho ${dew}`;
+    tempDewpoint = `Temperatura ${temp}°C, ponto de orvalho ${dew}°C`;
   } else if (tempDecodedMatch) {
     const temp = tempDecodedMatch[1];
     const dew = dewDecodedMatch ? dewDecodedMatch[1] : null;
     tempDewpoint = dew 
-      ? `Temperatura ${temp}, ponto de orvalho ${dew}`
-      : `Temperatura ${temp}`;
+      ? `Temperatura ${temp}°C, ponto de orvalho ${dew}°C`
+      : `Temperatura ${temp}°C`;
   }
   
   if (!tempDewpoint) {
-    tempDewpoint = 'Temperatura 15, ponto de orvalho 10'; // ISA padrão
+    tempDewpoint = 'Temperatura 15°C, ponto de orvalho 10°C'; // ISA padrão
   }
   
   // 8. QNH
@@ -384,19 +399,19 @@ function generateAtisMessage(
   const altInHgMatch = metarContext.match(/\bA(\d{4})\b/);
   
   if (qnhRawMatch) {
-    qnh = `QNH ${qnhRawMatch[1]}`;
+    qnh = `QNH ${qnhRawMatch[1]} hPa`;
   } else if (qnhDecodedMatch) {
-    qnh = `QNH ${qnhDecodedMatch[1]}`;
+    qnh = `QNH ${qnhDecodedMatch[1]} hPa`;
   } else if (altInHgMatch) {
     // Converter de inHg para hPa
     const inhg = parseFloat(altInHgMatch[1]) / 100; // A2992 = 29.92 inHg
     const hpa = Math.round(inhg * 33.8639);
-    qnh = `QNH ${hpa}`;
+    qnh = `QNH ${hpa} hPa`;
   }
   
   // QNH é OBRIGATÓRIO em ATIS - nunca deve estar vazio
   if (!qnh) {
-    qnh = 'QNH 1013'; // ISA padrão
+    qnh = 'QNH 1013 hPa'; // ISA padrão
   }
   
   // 9. PISTA EM USO (inferir do vento)
@@ -429,7 +444,7 @@ function generateAtisMessage(
       atisLines.push(`${phenomenaLine}.`);
     }
     if (clouds.length > 0) {
-      atisLines.push(`${clouds.join(', ')}.`);
+      atisLines.push(`Nuvens: ${clouds.join(', ')}.`);
     }
   }
   
@@ -443,7 +458,7 @@ function generateAtisMessage(
   atisLines.push(`${runway}.`);
   
   // 10. Instrução final
-  atisLines.push(`Ao contato inicial, informe ter ${infoLetter}.`);
+  atisLines.push(`Ao contato inicial, informe que possui a informação ${infoLetter}.`);
   
   return `📡 ATIS ${airportIcao}:
 
