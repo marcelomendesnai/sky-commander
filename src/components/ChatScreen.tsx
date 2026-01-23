@@ -238,10 +238,36 @@ export function ChatScreen() {
           content: m.content,
         }));
 
-      // Prepare the message - if resuming, ask ATC to continue
+      // Get current phase info for context injection
+      const currentPhaseInfo = getFlightPhaseInfo(currentFlightPhase);
+      
+      // Get last ATC message for context
+      const lastAtcMessage = [...messages]
+        .reverse()
+        .find(m => m.role === 'atc')?.content || 'Nenhuma comunicação anterior';
+
+      // Build current state snapshot - this MUST be prepended to EVERY message
+      const referenceAirport = selectedFrequency?.airport === 'departure' 
+        ? flightData?.departureIcao 
+        : flightData?.arrivalIcao;
+      
+      const stateSnapshot = `
+[⚠️ ESTADO ATUAL DO VOO - PRIORIDADE MÁXIMA - IGNORE HISTÓRICO CONFLITANTE]
+📍 FASE ATUAL: ${currentPhaseInfo?.label || currentFlightPhase}
+📻 RÁDIO SINTONIZADO: ${selectedFrequency ? `${selectedFrequency.name} (${selectedFrequency.frequency})` : 'Não sintonizado'}
+🛫 AEROPORTO DE REFERÊNCIA: ${referenceAirport || 'Não definido'}
+📝 ÚLTIMA MSG ATC: ${lastAtcMessage.substring(0, 150)}${lastAtcMessage.length > 150 ? '...' : ''}
+`.trim();
+
+      // Prepare the message with state context
       const messageToSend = isResume 
-        ? '[SITUAÇÃO RESOLVIDA - ATC deve retomar contato como se o tráfego ou situação de espera tivesse passado]'
-        : userMessage;
+        ? `${stateSnapshot}
+
+[INSTRUÇÃO ESPECIAL: O tempo passou. A situação de espera foi resolvida. O ATC deve retomar contato APROPRIADO para a fase "${currentPhaseInfo?.label}". 
+Se estamos em "${currentPhaseInfo?.label}", responda como o setor correto para esta fase, NÃO repita instruções antigas do histórico que eram para fases anteriores.]`
+        : `${stateSnapshot}
+
+${userMessage}`;
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/atc-chat`, {
         method: 'POST',
