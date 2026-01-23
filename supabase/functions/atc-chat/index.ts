@@ -5,6 +5,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Input validation limits
+const MAX_MESSAGE_LENGTH = 5000;
+const MAX_HISTORY_SIZE = 50;
+const MAX_SYSTEM_PROMPT_LENGTH = 10000;
+const MAX_METAR_CONTEXT_LENGTH = 5000;
+const MAX_API_KEY_LENGTH = 200;
+const MAX_ICAO_LENGTH = 4;
+const MAX_AIRCRAFT_LENGTH = 100;
+
 interface SelectedFrequency {
   airport: 'departure' | 'arrival';
   frequencyType: string;
@@ -28,7 +37,150 @@ interface ChatRequest {
   anthropicApiKey?: string;
   selectedModel?: string;
   selectedFrequency?: SelectedFrequency | null;
-  currentPhase?: string; // Flight phase from timeline
+  currentPhase?: string;
+}
+
+/**
+ * Validates and sanitizes chat request input
+ */
+function validateChatRequest(body: unknown): { valid: true; data: ChatRequest } | { valid: false; error: string; status: number } {
+  if (!body || typeof body !== 'object') {
+    return { valid: false, error: "Requisição inválida", status: 400 };
+  }
+
+  const req = body as Record<string, unknown>;
+
+  // Validate message
+  if (!req.message || typeof req.message !== 'string') {
+    return { valid: false, error: "Mensagem não fornecida", status: 400 };
+  }
+  if (req.message.length > MAX_MESSAGE_LENGTH) {
+    return { valid: false, error: `Mensagem muito longa (máximo ${MAX_MESSAGE_LENGTH} caracteres)`, status: 400 };
+  }
+
+  // Validate history
+  if (!Array.isArray(req.history)) {
+    return { valid: false, error: "Histórico inválido", status: 400 };
+  }
+  // Limit history size to prevent abuse
+  const limitedHistory = req.history.slice(-MAX_HISTORY_SIZE).filter(
+    (h): h is { role: string; content: string } =>
+      typeof h === 'object' && h !== null &&
+      typeof (h as Record<string, unknown>).role === 'string' &&
+      typeof (h as Record<string, unknown>).content === 'string' &&
+      ((h as Record<string, unknown>).content as string).length <= MAX_MESSAGE_LENGTH
+  );
+
+  // Validate flightData
+  if (!req.flightData || typeof req.flightData !== 'object') {
+    return { valid: false, error: "Dados do voo não fornecidos", status: 400 };
+  }
+  const fd = req.flightData as Record<string, unknown>;
+  if (typeof fd.aircraft !== 'string' || fd.aircraft.length > MAX_AIRCRAFT_LENGTH) {
+    return { valid: false, error: "Aeronave inválida", status: 400 };
+  }
+  if (typeof fd.departureIcao !== 'string' || fd.departureIcao.length > MAX_ICAO_LENGTH) {
+    return { valid: false, error: "ICAO de saída inválido", status: 400 };
+  }
+  if (typeof fd.arrivalIcao !== 'string' || fd.arrivalIcao.length > MAX_ICAO_LENGTH) {
+    return { valid: false, error: "ICAO de chegada inválido", status: 400 };
+  }
+  if (typeof fd.flightType !== 'string' || !['VFR', 'IFR'].includes(fd.flightType)) {
+    return { valid: false, error: "Tipo de voo inválido", status: 400 };
+  }
+  if (typeof fd.mode !== 'string' || !['TREINO', 'VIVO'].includes(fd.mode)) {
+    return { valid: false, error: "Modo inválido", status: 400 };
+  }
+
+  // Validate talkingTo
+  if (typeof req.talkingTo !== 'string' || !['atc', 'evaluator'].includes(req.talkingTo)) {
+    return { valid: false, error: "Destinatário inválido", status: 400 };
+  }
+
+  // Validate and truncate optional fields
+  const metarContext = typeof req.metarContext === 'string' 
+    ? req.metarContext.slice(0, MAX_METAR_CONTEXT_LENGTH) 
+    : '';
+  
+  const systemPrompt = typeof req.systemPrompt === 'string'
+    ? req.systemPrompt.slice(0, MAX_SYSTEM_PROMPT_LENGTH)
+    : '';
+
+  // Validate optional API key
+  let anthropicApiKey: string | undefined;
+  if (req.anthropicApiKey !== undefined && req.anthropicApiKey !== null) {
+    if (typeof req.anthropicApiKey !== 'string' || req.anthropicApiKey.length > MAX_API_KEY_LENGTH) {
+      return { valid: false, error: "API Key inválida", status: 400 };
+    }
+    anthropicApiKey = req.anthropicApiKey.trim() || undefined;
+  }
+
+  // Validate selectedModel
+  const validModels = [
+    'google/gemini-3-flash-preview',
+    'google/gemini-2.5-flash',
+    'google/gemini-2.5-flash-lite',
+    'google/gemini-2.5-pro',
+    'google/gemini-3-pro-preview',
+    'openai/gpt-5',
+    'openai/gpt-5-mini',
+    'openai/gpt-5-nano',
+    'openai/gpt-5.2',
+  ];
+  const selectedModel = typeof req.selectedModel === 'string' && validModels.includes(req.selectedModel)
+    ? req.selectedModel
+    : 'google/gemini-3-flash-preview';
+
+  // Validate selectedFrequency (optional)
+  let selectedFrequency: SelectedFrequency | null = null;
+  if (req.selectedFrequency && typeof req.selectedFrequency === 'object') {
+    const sf = req.selectedFrequency as Record<string, unknown>;
+    if (
+      (sf.airport === 'departure' || sf.airport === 'arrival') &&
+      typeof sf.frequencyType === 'string' && sf.frequencyType.length <= 20 &&
+      typeof sf.frequency === 'string' && sf.frequency.length <= 20 &&
+      typeof sf.name === 'string' && sf.name.length <= 100
+    ) {
+      selectedFrequency = {
+        airport: sf.airport,
+        frequencyType: sf.frequencyType,
+        frequency: sf.frequency,
+        name: sf.name,
+      };
+    }
+  }
+
+  // Validate currentPhase (optional)
+  const validPhases = [
+    'PARKING_COLD', 'PARKING_HOT', 'TAXI_OUT', 'HOLDING_POINT', 'LINED_UP',
+    'TAKEOFF_ROLL', 'INITIAL_CLIMB', 'LEAVING_TMA', 'CRUISE', 'DESCENT',
+    'ENTERING_TMA', 'APPROACH', 'FINAL', 'LANDING', 'ROLLOUT', 'TAXI_IN', 'PARKING_ARRIVED'
+  ];
+  const currentPhase = typeof req.currentPhase === 'string' && validPhases.includes(req.currentPhase)
+    ? req.currentPhase
+    : undefined;
+
+  return {
+    valid: true,
+    data: {
+      message: req.message.trim(),
+      history: limitedHistory,
+      flightData: {
+        aircraft: (fd.aircraft as string).trim(),
+        departureIcao: (fd.departureIcao as string).toUpperCase().trim(),
+        arrivalIcao: (fd.arrivalIcao as string).toUpperCase().trim(),
+        flightType: fd.flightType as string,
+        mode: fd.mode as string,
+      },
+      metarContext,
+      talkingTo: req.talkingTo as 'atc' | 'evaluator',
+      systemPrompt,
+      anthropicApiKey,
+      selectedModel,
+      selectedFrequency,
+      currentPhase,
+    },
+  };
 }
 
 // Flight phase metadata for validation and context
@@ -471,6 +623,25 @@ serve(async (req) => {
   }
 
   try {
+    // Parse and validate input
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Requisição inválida" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const validation = validateChatRequest(body);
+    if (!validation.valid) {
+      return new Response(
+        JSON.stringify({ error: validation.error }),
+        { status: validation.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const {
       message,
       history,
@@ -482,7 +653,10 @@ serve(async (req) => {
       selectedModel,
       selectedFrequency,
       currentPhase,
-    }: ChatRequest = await req.json();
+    } = validation.data;
+
+    // Log request info (no sensitive data)
+    console.log("Processing chat request, message length:", message.length, "history size:", history.length);
 
     // ATIS: Gerar resposta automática formatada (não precisa de IA)
     if (selectedFrequency?.frequencyType === 'ATIS') {
@@ -605,18 +779,27 @@ Formate assim:
       });
 
       if (!response.ok) {
+        // Log detailed error server-side only
         const errorText = await response.text();
-        console.error("Anthropic API error:", response.status, errorText);
+        console.error("External API error:", response.status, errorText);
         
+        // Return generic errors to client
         if (response.status === 401) {
           return new Response(
-            JSON.stringify({ error: "API Key Anthropic inválida" }),
+            JSON.stringify({ error: "Falha na autenticação" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ error: "Limite de requisições excedido" }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         
         return new Response(
-          JSON.stringify({ error: "Erro na API Anthropic" }),
+          JSON.stringify({ error: "Erro no serviço de IA" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -635,8 +818,9 @@ Formate assim:
       // Use Lovable AI Gateway
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (!LOVABLE_API_KEY) {
+        console.error("LOVABLE_API_KEY not configured");
         return new Response(
-          JSON.stringify({ error: "LOVABLE_API_KEY não configurada" }),
+          JSON.stringify({ error: "Serviço não configurado" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -658,24 +842,26 @@ Formate assim:
       });
 
       if (!response.ok) {
+        // Log detailed error server-side only
         const errorText = await response.text();
-        console.error("Lovable AI Gateway error:", response.status, errorText);
+        console.error("External API error:", response.status, errorText);
 
+        // Return generic errors to client
         if (response.status === 429) {
           return new Response(
-            JSON.stringify({ error: "Limite de requisições excedido. Tente novamente mais tarde." }),
+            JSON.stringify({ error: "Limite de requisições excedido" }),
             { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         if (response.status === 402) {
           return new Response(
-            JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao seu workspace." }),
+            JSON.stringify({ error: "Créditos insuficientes" }),
             { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ error: "Erro no gateway de IA" }),
+          JSON.stringify({ error: "Erro no serviço de IA" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -692,9 +878,12 @@ Formate assim:
     }
 
   } catch (error) {
-    console.error("Error in atc-chat:", error);
+    // Log detailed error server-side only
+    console.error("Function error:", error);
+    
+    // Return generic error to client
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }),
+      JSON.stringify({ error: "Erro interno do servidor" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
