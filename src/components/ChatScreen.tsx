@@ -556,7 +556,7 @@ export function ChatScreen() {
         </TabsContent>
 
         {/* Data Tab Content */}
-        <TabsContent value="data" className="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+        <TabsContent value="data" className="flex-1 overflow-y-auto m-0 min-h-0 data-[state=inactive]:hidden">
           <div className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
             {/* Flight Info Header */}
             {flightData && (
