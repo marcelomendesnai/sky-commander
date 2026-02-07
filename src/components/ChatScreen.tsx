@@ -316,6 +316,8 @@ ${userMessage}`;
           selectedModel: settings.selectedModel,
           selectedFrequency: talkingTo === 'atc' ? selectedFrequency : null,
           currentPhase: currentFlightPhase,
+          departureFrequencies: departureAirport?.frequencies || [],
+          arrivalFrequencies: arrivalAirport?.frequencies || [],
         }),
       });
 
