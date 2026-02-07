@@ -17,6 +17,29 @@ import { FlightTimeline } from '@/components/FlightTimeline';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+/**
+ * Renderiza texto com markdown básico (negrito **texto**) convertido em elementos estilizados.
+ * NOTA: NÃO usar ** diretamente no texto - usar esta função para renderizar corretamente.
+ */
+function renderMarkdownText(text: string, isEvaluator: boolean = false): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      const boldText = part.slice(2, -2);
+      return (
+        <span 
+          key={index} 
+          className={`font-semibold ${isEvaluator ? 'text-atc-amber' : 'text-primary'}`}
+        >
+          {boldText}
+        </span>
+      );
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
 function MessageBubble({ 
   message, 
   onPlayAudio,
@@ -75,7 +98,7 @@ function MessageBubble({
           </div>
         )}
         
-        {/* Message content */}
+        {/* Message content - usa renderMarkdownText para converter **texto** em negrito estilizado */}
         <div className={`rounded-lg px-4 py-3 ${
           isUser 
             ? 'bg-primary/20 border border-primary/30 text-foreground' 
@@ -86,7 +109,7 @@ function MessageBubble({
           <p className={`text-sm leading-relaxed whitespace-pre-wrap ${
             isATC ? 'atc-message' : isEvaluator ? 'evaluator-message' : 'font-mono'
           }`}>
-            {message.content}
+            {renderMarkdownText(message.content, isEvaluator)}
           </p>
         </div>
 
