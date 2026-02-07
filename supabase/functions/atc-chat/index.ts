@@ -364,6 +364,11 @@ function buildPhaseContext(
 
   // Validation rules for the AI
   context += `
+**REGRAS DE COMUNICAÇÃO PARA ESTA FASE:**
+- ${phaseInfo.silenceRequired ? '⚠️ SILÊNCIO OBRIGATÓRIO - mínimo de comunicação' : 'Comunicação normal permitida'}
+- Após readback correto: SILÊNCIO (não confirme "correto", "afirmativo")
+- QNH: Informar apenas SE ainda não foi dado neste setor
+
 **REGRA DE OURO**: Quando o piloto muda de fase (ex: de "Alinhado na Pista" para "Subida Inicial"), 
 você DEVE responder como o setor apropriado para a NOVA fase. 
 Exemplo: Se a fase é "Subida Inicial" e o setor esperado é "TWR" ou "DEP", 
