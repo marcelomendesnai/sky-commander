@@ -1,119 +1,123 @@
 
-# Avaliação Crítica das Melhorias Propostas
+# Plano de Correção do Prompt ATC
 
-## Metodologia de Avaliação
-Cada melhoria foi avaliada com base em:
-- **Impacto**: Melhora real na experiência do usuário
-- **Complexidade**: Quantidade de código afetado
-- **Risco**: Chance de quebrar funcionalidades existentes
+## Problemas Identificados
 
----
-
-## Recomendação: Apenas via Prompt (Baixo Risco)
-
-A maioria dessas melhorias são **comportamentais da IA**, não de código. A forma mais segura de implementá-las é ajustando o **system prompt** no `DEFAULT_PROMPT` (em `AppContext.tsx`) e/ou nas instruções dinâmicas enviadas à IA (em `atc-chat/index.ts`).
+| # | Problema | Causa Raiz | Evidência |
+|---|----------|------------|-----------|
+| 1 | ATC diz "Torre 118.1" quando é 118.700 | A IA não recebe a lista de frequências reais disponíveis | Imagem 1: Torre SBRF é 118.700 |
+| 2 | ATC não questiona mudança de destino | Falta regra explícita para verificar consistência do destino | Imagem 3: Piloto disse SBRJ depois SBSP |
+| 3 | ATC usa "Decolagem" em vez de "DEP/Controle" | Terminologia incorreta no prompt | Imagem 2: "Decolagem 119.1" |
+| 4 | ATC manda contatar CTR que não existe | IA não sabe quais frequências estão disponíveis | Imagem 4: CTR sem frequência no seletor |
 
 ---
 
-## Melhorias a Implementar (via Prompt)
+## Solução Técnica
 
-| Melhoria | Justificativa | Local |
-|----------|---------------|-------|
-| Silêncio = confirmação | Evita verbosidade; padrão real de ATC | `DEFAULT_PROMPT` |
-| QNH uma vez por fase/setor | Já há contexto de fase; basta instruir | `DEFAULT_PROMPT` |
-| Readback só de autorizações | Regra clara e fácil de adicionar | `DEFAULT_PROMPT` |
-| Minimizar fala em fases críticas | O sistema já sinaliza `silenceRequired` | `buildPhaseContext()` |
-| Tratar erros de ditado como ruído | Já documentado em memória; formalizar no prompt | `DEFAULT_PROMPT` |
-| Priorizar realismo sobre pedagogia | Ajuste de tom no prompt | `DEFAULT_PROMPT` |
+### Arquivo 1: `supabase/functions/atc-chat/index.ts`
 
----
+**Mudança Principal**: Injetar a lista completa de frequências REAIS disponíveis no contexto da IA.
 
-## Melhorias a NÃO Implementar (Alto Risco / Baixo Benefício)
+O `frequencyContext` atual (linhas 714-743) diz qual frequência está sintonizada, mas NÃO informa quais frequências existem. A IA precisa saber:
+- Quais setores têm frequência disponível
+- Qual é a frequência EXATA de cada setor
+- Se CTR não existe, ela não pode mandar contatar CTR
 
-| Melhoria | Motivo para Rejeitar |
-|----------|---------------------|
-| "Aplicar mudanças imediatamente após feedback" | Isso é comportamento de sessão da IA, não algo que código controla. A IA já deveria fazer isso naturalmente. Adicionar regras explícitas pode gerar conflitos. |
-| "Ajustar conforme nível do piloto" | Não há sistema de detecção de nível do piloto. Implementar isso exigiria lógica complexa de análise de histórico, fora do escopo. |
-| "Manter padrão único até fim do voo" | Redundante com a instrução de consistência. A IA já recebe contexto de fase; forçar regras adicionais pode conflitar. |
-
----
-
-## Alterações Propostas
-
-### 1. Atualizar `DEFAULT_PROMPT` em `AppContext.tsx`
-
-Adicionar seção nova com regras operacionais consolidadas:
+**Alterações no `frequencyContext`:**
 
 ```text
-## REGRAS OPERACIONAIS DE COMUNICAÇÃO
+**FREQUÊNCIAS DISPONÍVEIS (DADOS REAIS - USE APENAS ESTAS):**
+Aeroporto de Saída (${departureIcao}):
+- ATIS: ${atis_freq ou 'INDISPONÍVEL'}
+- CLR: ${clr_freq ou 'INDISPONÍVEL'}
+- GND (Solo): ${gnd_freq ou 'INDISPONÍVEL'}
+- TWR (Torre): ${twr_freq ou 'INDISPONÍVEL'}
+- DEP (Controle/Departure): ${dep_freq ou 'INDISPONÍVEL'}
+- CTR (Centro): ${ctr_freq ou 'INDISPONÍVEL'}
 
-### Confirmação de Readback
-- **Silêncio = confirmação**: Após readback correto, NÃO confirme verbalmente.
-- Fale APENAS para: nova instrução, correção, ou gatilho obrigatório.
-- Não repita informações já estabilizadas (pista, QNH, altitude se já confirmados).
+Aeroporto de Destino (${arrivalIcao}):
+[mesma estrutura]
 
-### Gestão de QNH
-- Informe QNH UMA VEZ por fase/setor.
-- Repita APENAS se: mudança de setor, mudança de fase (cruzeiro→descida), valor alterado, ou risco de erro vertical.
-- Não use QNH como reforço didático.
-
-### Readback e Autorização
-- Exija readback APENAS de autorizações explícitas (altitude, proa, runway, clearance).
-- NÃO cobre readback de "expectativas" (ex: "espere vetores").
-- Diferencie: Autorização (exige readback) vs Informação (não exige).
-
-### Fluxo Operacional
-- Em fases críticas (final, pouso, taxi pós-pouso): comunicação mínima.
-- Avaliações longas vão para debriefing, não durante a fase.
-
-### Erros de Ditado/Áudio
-- Distorções de transcrição (ex: "KNH" em vez de "QNH", "Kenya" por "Kilo") são RUÍDO de áudio.
-- NÃO trate como erro conceitual se o contexto for inequívoco.
-- Corrija forma APENAS quando comprometer segurança ou entendimento.
-
-### Realismo Operacional
-- Priorize realismo sobre pedagogia excessiva.
-- Fraseologia seca e operacional. Evite verbos didáticos em excesso.
+⚠️ REGRA CRÍTICA: 
+- NUNCA invente frequências. Use APENAS as listadas acima.
+- Se uma frequência está "INDISPONÍVEL", NÃO mande contatar esse setor.
+- Ao transferir o piloto, use a frequência EXATA da lista.
 ```
 
-### 2. Atualizar instruções em `buildPhaseContext()` (linhas 366-392)
+**Lógica Necessária**: O edge function precisa receber as frequências dos dois aeroportos, não só a frequência selecionada. Isso requer:
+1. Modificar o `ChatRequest` para incluir `departureFrequencies` e `arrivalFrequencies`
+2. Modificar o frontend (`ChatScreen.tsx`) para enviar esses dados
+3. Usar esses dados para construir o contexto
 
-Adicionar regra de silêncio pós-readback para fases críticas:
+---
+
+### Arquivo 2: `src/contexts/AppContext.tsx`
+
+**Mudança no `DEFAULT_PROMPT`**: Adicionar regras de validação de destino e terminologia correta.
 
 ```text
-**REGRAS DE COMUNICAÇÃO PARA ESTA FASE:**
-- ${phaseInfo.silenceRequired ? '⚠️ SILÊNCIO OBRIGATÓRIO - mínimo de comunicação' : 'Comunicação normal'}
-- Após readback correto: SILÊNCIO (não confirme "correto", "afirmativo")
-- QNH: Informar apenas SE ainda não foi dado neste setor
+## REGRAS DE VALIDAÇÃO CRÍTICAS
+
+### Verificação de Destino
+- O piloto informou destino no plano de voo: ${arrivalIcao}
+- Se o piloto mencionar OUTRO destino, você DEVE questionar:
+  "Confirme destino: você informou ${arrivalIcao} no plano de voo."
+- NÃO aceite mudança de destino silenciosamente.
+
+### Terminologia de Setores (ICAO)
+- GND = "Solo" (Ground)
+- TWR = "Torre" (Tower)  
+- DEP = "Controle de Saída" ou "Departure" (NUNCA use "Decolagem")
+- APP = "Aproximação" (Approach)
+- CTR = "Centro" (Center)
+
+### Uso de Frequências
+- SEMPRE use frequências EXATAS do contexto de voo.
+- NUNCA invente frequências.
+- Se o setor não tiver frequência disponível (INDISPONÍVEL), NÃO transfira para ele.
+- Exemplo: Se CTR está indisponível, mantenha em DEP ou informe "sem cobertura radar".
+```
+
+---
+
+### Arquivo 3: `src/components/ChatScreen.tsx`
+
+**Mudança**: Enviar frequências de ambos aeroportos para o edge function.
+
+```typescript
+body: JSON.stringify({
+  // ... campos existentes ...
+  departureFrequencies: departureAirport?.frequencies || [],
+  arrivalFrequencies: arrivalAirport?.frequencies || [],
+}),
 ```
 
 ---
 
 ## Resumo das Alterações
 
-| Arquivo | Tipo de Mudança |
-|---------|----------------|
-| `src/contexts/AppContext.tsx` | Adicionar seção de regras operacionais ao `DEFAULT_PROMPT` |
-| `supabase/functions/atc-chat/index.ts` | Adicionar dicas de comunicação no `buildPhaseContext()` |
-
-**Total de linhas afetadas**: ~30 linhas (apenas adições ao prompt)
-
----
-
-## Riscos Mitigados
-
-1. **Sem alteração de lógica de código** - apenas texto de prompt
-2. **Backward compatible** - usuários com prompts customizados não são afetados
-3. **Facilmente reversível** - basta remover as linhas adicionadas
-4. **Testável imediatamente** - mudanças refletem na próxima mensagem enviada
+| Arquivo | Linhas Afetadas | Tipo |
+|---------|-----------------|------|
+| `atc-chat/index.ts` | ~714-750 (frequencyContext) | Expandir contexto com frequências reais |
+| `atc-chat/index.ts` | ~50-68 (ChatRequest interface) | Adicionar campos de frequências |
+| `AppContext.tsx` | ~29-59 (DEFAULT_PROMPT) | Adicionar regras de validação |
+| `ChatScreen.tsx` | ~295-320 (fetch body) | Enviar frequências dos aeroportos |
 
 ---
 
-## Nota Importante
+## Riscos e Mitigação
 
-Usuários que já personalizaram o `systemPrompt` nas configurações **não verão essas mudanças** automaticamente, pois o prompt salvo tem precedência. O novo `DEFAULT_PROMPT` só afeta:
-- Novos usuários
-- Usuários que resetarem as configurações
-- Usuários que clicarem em "Restaurar Padrão" (se existir tal opção)
+| Risco | Mitigação |
+|-------|-----------|
+| Prompt muito longo | Formato compacto: lista simples de frequências |
+| Usuários com prompt customizado | Regras críticas vão no edge function, não só no prompt |
+| Aumento de tokens | Frequências são ~200 caracteres extras - impacto mínimo |
 
-Se quiser que as regras se apliquem a TODOS os usuários, seria necessário injetá-las no `fullSystemPrompt` do edge function, **após** o prompt do usuário. Isso é mais intrusivo mas garante aplicação universal.
+---
+
+## Resultado Esperado
+
+1. **Frequência correta**: "Chame Torre 118.700" (não 118.1)
+2. **Validação de destino**: "Confirme destino: você informou SBRJ"
+3. **Terminologia correta**: "Contato Controle Recife 128.200" (não "Decolagem")
+4. **CTR ausente tratado**: "Mantemos em Controle, sem cobertura Centro nesta área"
