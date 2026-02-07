@@ -47,6 +47,12 @@ interface SelectedFrequency {
   name: string;
 }
 
+interface AirportFrequency {
+  type: string;
+  frequency: string;
+  name?: string;
+}
+
 interface ChatRequest {
   message: string;
   history: { role: string; content: string }[];
@@ -64,6 +70,8 @@ interface ChatRequest {
   selectedModel?: string;
   selectedFrequency?: SelectedFrequency | null;
   currentPhase?: string;
+  departureFrequencies?: AirportFrequency[];
+  arrivalFrequencies?: AirportFrequency[];
 }
 
 /**
@@ -712,7 +720,62 @@ serve(async (req) => {
     }
 
     // Build frequency context for prompt
-    let frequencyContext = '';
+    // Helper to format frequency list
+    const formatFrequencyList = (freqs: AirportFrequency[] | undefined, icao: string): string => {
+      if (!freqs || freqs.length === 0) return `  (Nenhuma frequência disponível para ${icao})`;
+      
+      const typeLabels: Record<string, string> = {
+        'ATIS': 'ATIS',
+        'CLR': 'CLR (Clearance/Tráfego)',
+        'GND': 'GND (Solo)',
+        'TWR': 'TWR (Torre)',
+        'DEP': 'DEP (Controle de Saída)',
+        'APP': 'APP (Aproximação)',
+        'CTR': 'CTR (Centro)'
+      };
+      
+      const expectedTypes = ['ATIS', 'CLR', 'GND', 'TWR', 'DEP', 'APP', 'CTR'];
+      const lines: string[] = [];
+      
+      for (const type of expectedTypes) {
+        const freq = freqs.find(f => f.type === type);
+        if (freq) {
+          lines.push(`  - ${typeLabels[type] || type}: ${freq.frequency}`);
+        } else {
+          lines.push(`  - ${typeLabels[type] || type}: INDISPONÍVEL`);
+        }
+      }
+      
+      return lines.join('\n');
+    };
+
+    // Get departure and arrival frequencies from request
+    const departureFrequencies = (body as Record<string, unknown>).departureFrequencies as AirportFrequency[] | undefined;
+    const arrivalFrequencies = (body as Record<string, unknown>).arrivalFrequencies as AirportFrequency[] | undefined;
+
+    let frequencyContext = `
+## FREQUÊNCIAS DISPONÍVEIS (DADOS REAIS - USE APENAS ESTAS)
+
+**Aeroporto de Saída (${flightData.departureIcao}):**
+${formatFrequencyList(departureFrequencies, flightData.departureIcao)}
+
+**Aeroporto de Destino (${flightData.arrivalIcao}):**
+${formatFrequencyList(arrivalFrequencies, flightData.arrivalIcao)}
+
+⚠️ REGRAS CRÍTICAS DE FREQUÊNCIA:
+- NUNCA invente frequências. Use APENAS as listadas acima.
+- Se uma frequência está "INDISPONÍVEL", NÃO mande o piloto contatar esse setor.
+- Ao transferir o piloto, use a frequência EXATA da lista.
+- Exemplo: Se CTR está INDISPONÍVEL, mantenha em DEP ou informe "mantemos em frequência".
+
+## TERMINOLOGIA OBRIGATÓRIA (ICAO Brasil)
+- GND = "Solo" (Ground)
+- TWR = "Torre" (Tower)
+- DEP = "Controle de Saída" ou "Controle ${flightData.departureIcao.slice(2)}" (NUNCA use "Decolagem")
+- APP = "Aproximação" (Approach)
+- CTR = "Centro" (Center)
+`;
+
     if (selectedFrequency) {
       const airportIcao = selectedFrequency.airport === 'departure' 
         ? flightData.departureIcao 
@@ -721,26 +784,24 @@ serve(async (req) => {
       // Extract airport name from frequency name (e.g., "Solo Guarulhos" → "Guarulhos")
       const airportName = selectedFrequency.name.replace(/^(ATIS|Solo|Torre|Aproximação|Decolagem|Controle|APP|GND|TWR|DEP|CLR|CTR)\s*/i, '').trim();
       
-      frequencyContext = `
+      frequencyContext += `
 **Frequência Sintonizada pelo Piloto:**
 Aeroporto: ${airportIcao} (${airportName}) - ${selectedFrequency.airport === 'departure' ? 'SAÍDA' : 'DESTINO'}
 Setor: ${selectedFrequency.frequencyType} (${selectedFrequency.frequency})
 Nome Completo: ${selectedFrequency.name}
 
-VALIDAÇÃO CRÍTICA - VOCÊ DEVE VERIFICAR DUAS COISAS:
+VALIDAÇÃO CRÍTICA - VOCÊ DEVE VERIFICAR:
 
 1. **AEROPORTO CORRETO**: O piloto DEVE chamar o aeroporto onde está sintonizado (${airportName}/${airportIcao}).
-   - Se ele chamar OUTRO aeroporto (ex: chamar "Recife" quando está em "Guarulhos"), você deve responder:
-   "Estação chamando [aeroporto errado], você está na frequência de ${airportName}, verifique sua frequência."
+   - Se ele chamar OUTRO aeroporto, responda: "Estação chamando [aeroporto errado], você está na frequência de ${airportName}, verifique sua frequência."
    
 2. **SETOR CORRETO**: O piloto DEVE chamar o setor sintonizado (${selectedFrequency.frequencyType}).
-   - Se ele chamar outro setor (ex: chamar "Torre" quando está em "Solo"), você deve responder:
-   "Estação chamando [setor errado], você está na frequência ${selectedFrequency.frequencyType === 'GND' ? 'do Solo' : selectedFrequency.frequencyType === 'TWR' ? 'da Torre' : 'de ' + selectedFrequency.frequencyType}, verifique sua frequência."
+   - Se ele chamar outro setor, responda: "Estação chamando [setor errado], você está na frequência ${selectedFrequency.frequencyType === 'GND' ? 'do Solo' : selectedFrequency.frequencyType === 'TWR' ? 'da Torre' : 'de ' + selectedFrequency.frequencyType}."
 
-EXEMPLOS DE ERROS:
-- Sintonizado: SBGR SOLO | Piloto diz: "Recife Solo" → ERRO! Aeroporto errado.
-- Sintonizado: SBGR SOLO | Piloto diz: "Guarulhos Torre" → ERRO! Setor errado.
-- Sintonizado: SBGR SOLO | Piloto diz: "Guarulhos Solo" → CORRETO!`;
+3. **DESTINO DECLARADO**: O destino no plano de voo é ${flightData.arrivalIcao}.
+   - Se o piloto mencionar OUTRO destino, você DEVE questionar: "Confirme destino: seu plano de voo indica ${flightData.arrivalIcao}."
+   - NÃO aceite mudança de destino silenciosamente.
+`;
     }
 
     // Build phase context
