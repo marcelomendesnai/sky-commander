@@ -5,6 +5,7 @@ import { AtcInput } from '@/components/ui/atc-input';
 import { AtcButton } from '@/components/ui/atc-button';
 import { useApp } from '@/contexts/AppContext';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { LOVABLE_AI_MODELS, type LovableAIModel } from '@/types/flight';
@@ -24,17 +25,18 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-3xl animate-fade-in">
-      <div className="mb-8">
-        <h2 className="text-2xl font-mono font-bold text-primary mb-2">
-          CONFIGURAÇÕES
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Configure suas chaves de API e personalize o sistema
-        </p>
-      </div>
+    <ScrollArea className="flex-1 h-full">
+      <div className="container mx-auto px-4 py-8 max-w-3xl animate-fade-in">
+        <div className="mb-8">
+          <h2 className="text-2xl font-mono font-bold text-primary mb-2">
+            CONFIGURAÇÕES
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Configure suas chaves de API e personalize o sistema
+          </p>
+        </div>
 
-      <div className="space-y-6">
+        <div className="space-y-6">
         {/* LLM Configuration Section */}
         <div className="space-y-4">
           <h3 className="text-lg font-mono font-semibold text-primary flex items-center gap-2">
@@ -248,7 +250,8 @@ export function SettingsScreen() {
             Salvar Configurações
           </AtcButton>
         </div>
+        </div>
       </div>
-    </div>
+    </ScrollArea>
   );
 }
