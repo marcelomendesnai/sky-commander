@@ -163,6 +163,103 @@ V=Victor, W=Whisky, X=X-ray, Y=Yankee, Z=Zulu
 - Menos é mais: transmissões de no máximo 20 segundos
 - Seja simples, ágil, e fale somente o necessário
 
+## TERMOS E INSTRUÇÕES AVANÇADAS DO ATC
+
+### Contato Radar:
+- Significa que o ATC localizou e identificou a aeronave no radar
+- O ATC passa a monitorar velocidade, altitude e trajetória em tempo real
+- O piloto NÃO precisa cotejar (repetir) "contato radar" — é informação, não instrução
+- Com contato radar ativo, o piloto NÃO precisa reportar: nível atingido, velocidade atual, passagem por fixos
+- O piloto SÓ reporta se o ATC pedir ou se houver restrição de nível
+- Se o ATC restringiu a um nível (ex: "suba ao nível de voo 140") e o piloto nivelou sem nova instrução, o piloto pode chamar para lembrar que está restrito e solicitar subida/descida adicional
+- Exemplo: "Gol 2006, contato radar na decolagem, suba sem restrições ao nível de voo 340" → Piloto repete apenas: "Sobe sem restrições ao 340, Gol 2006" (NÃO repete "contato radar na decolagem")
+
+### Suba Via Saída / Desça Via Chegada:
+- "Suba via saída" = subir seguindo TODOS os fixos, restrições de altitude E velocidade da carta SID
+- "Desça via chegada" = descer seguindo TODOS os fixos, restrições de altitude E velocidade da carta STAR
+- O piloto DEVE passar por todos os fixos publicados na carta
+- O piloto DEVE respeitar todas as restrições (altitude e velocidade) até o nível autorizado
+- Ao atingir o nível autorizado, o piloto nivela e aguarda nova instrução
+- Se o ATC não autorizar descida adicional a tempo, o piloto deve chamar: "[callsign], atingi o nível de voo [FL], solicita descida"
+
+### Suba Sem Restrições:
+- O piloto DEVE seguir todos os fixos da carta SID (trajetória lateral mantida)
+- MAS pode cancelar todas as restrições de altitude e velocidade da carta
+- Sobe direto ao nível autorizado, sem nivelar nos pontos intermediários
+- Usado quando o fluxo de tráfego permite subida direta
+
+### Vetoração Radar:
+- O ATC assume controle da direção do voo da aeronave
+- O piloto DEVE mudar a direção IMEDIATAMENTE (delay máximo 10-15 segundos)
+- Motivos comuns: sequenciamento na aproximação, separação de tráfego, agilizar trajetória
+- Exemplo: "Gol 2006, vetoração radar para sequenciamento, curve à esquerda na proa 120"
+- APENAS APP (Controle) e CTR (Centro) podem vetorar — TWR (Torre) e GND (Solo) NÃO vetoram no Brasil
+- A vetoração tem prioridade: o ATC calcula a curva considerando execução imediata
+
+### Espera (Holding):
+- Espera é um procedimento BEM DEFINIDO com pernas retas e curvas padronizadas (formato oval/hipódromo)
+- NÃO é fazer um círculo (360°) sobre um fixo — isso é outra manobra
+- A espera tem: fixo de espera, perna de afastamento com tempo definido, perna de aproximação, curvas padronizadas (esquerda ou direita)
+- Exemplo: "Gol 2006, programe esperas sobre [fixo], perna de aproximação 090°, curvas à esquerda, desça e mantenha nível de voo 140"
+- O piloto programa a espera no FMC/MCDU da aeronave
+
+### Autorizado ILS / Autorizado RNP:
+- Significa que APÓS o IAF (Initial Approach Fix), o piloto está autorizado a descer conforme o procedimento publicado
+- O IAF é o último fixo da STAR (chegada) e o primeiro fixo do procedimento de aproximação final
+- O ATC autoriza descida até a altitude do IAF + autoriza o procedimento
+- Após passar o IAF, o piloto JÁ ESTÁ autorizado a descer conforme a carta do ILS/RNP — NÃO precisa pedir autorização para cada altitude intermediária
+- O ATC NÃO vai ficar autorizando cada degrau de descida dentro do procedimento
+- Exemplo: Se o IAF é a 6.000 pés e o procedimento tem fixos a 4.800, 3.000, 1.980 — após passar o IAF a 6.000, o piloto desce conforme a carta automaticamente
+- "Reporte com visual do campo" = reporte quando avistar o aeroporto/pista/luzes (NÃO espere estar na curta final para reportar)
+
+### Reporte Estabilizado (reforço):
+- Estabilizado = de FRENTE para a pista, APÓS finalizar qualquer curva, no localizador/curso final
+- NÃO é durante a curva base, NÃO é antes da curva, NÃO é na curta final a 3nm
+- Reporte o mais cedo possível após a curva para dar tempo de transferência para a Torre
+- Após o reporte, o APP transfere para a Torre para autorização de pouso
+
+### Acione Identificação (IDENT):
+- É uma INSTRUÇÃO — só acionar quando SOLICITADO pelo ATC
+- "Contato radar" NÃO é instrução para acionar identificação
+- O piloto aperta o botão IDENT no transponder, fazendo a aeronave piscar no radar
+- Usado tipicamente na transferência entre centros/controles para confirmar transferência bem-sucedida
+- Exemplo: Transferido de Centro Brasília para Centro Recife → Centro Recife pede "acione identificação" → Piloto aperta IDENT → Ambos os centros confirmam a transferência
+
+### Transponder Modo Charlie:
+- "Transponder em modo Charlie" = instrução para LIGAR o transponder (estava em standby)
+- "Transponder standby" = instrução para DESLIGAR o transponder (após pousar)
+- O transponder deve ser ligado ao ingressar na pista antes da decolagem
+- Se o ATC disser "negativo contato radar, transponder em modo Charlie" = seu transponder está desligado, ligue-o
+
+### Informação de Tráfego (Posição por Horas):
+- O ATC informa posição de outros tráfegos usando referência de relógio analógico
+- 12 horas = à frente | 3 horas = à direita | 6 horas = atrás | 9 horas = à esquerda
+- Diagonais: 10h = diagonal esquerda frente, 2h = diagonal direita frente, etc.
+- Exemplo: "Gol 2006, informação de tráfego, tráfego às suas 2 horas, 10 milhas, mesmo nível, deslocamento sul"
+
+### Ideal de Giro Base (Circuito de Tráfego VFR):
+- "Reporte no ideal de giro base" NÃO é autorização para girar base
+- O piloto segue na perna do vento até o ponto que julga ideal para curvar para a perna base
+- Ao chegar nesse ponto, REPORTA para a Torre: "[callsign], no ideal de giro base"
+- A Torre ENTÃO autoriza ou não o giro base (pode pedir para alongar perna do vento, fazer 360, ou aguardar)
+- O piloto NÃO pode iniciar a curva para base sem autorização da Torre
+- Similar ao ideal de descida: é o ponto ideal, mas requer autorização
+
+### Velocidade Indicada vs Número Mach:
+- Velocidade indicada (IAS) = velocidade mostrada na speed tape do PFD, em nós
+- Número Mach = velocidade relativa à velocidade do som (ex: M.82 = 82% da velocidade do som)
+- Em cruzeiro, a separação é feita por número Mach (reportar apenas os dois primeiros dígitos: "ponto 82")
+- Em subida/descida e abaixo de FL280 aprox., usa-se velocidade indicada
+- O ATC pode pedir: "confirme sua velocidade indicada" ou "confirme seu número Mach"
+- O ATC pode instruir ajustes: "mantenha velocidade indicada 250 nós" ou "mantenha Mach ponto 78"
+
+### Livrar a Pista (Após Pouso):
+- Após pousar, o objetivo é ter o MENOR tempo possível de ocupação da pista
+- A pista só é considerada LIVRE quando TODO o avião (não só o nariz) ultrapassar a barra do ponto de espera na taxiway de saída
+- Se qualquer parte do avião ainda estiver antes da barra, a pista está OCUPADA
+- A Torre NÃO autorizará pouso de outro tráfego enquanto a pista estiver ocupada
+- Após livrar a pista, a Torre transfere para o Solo (GND)
+
 ## REGRAS DE VALIDAÇÃO CRÍTICAS
 
 ### Verificação de Destino:
