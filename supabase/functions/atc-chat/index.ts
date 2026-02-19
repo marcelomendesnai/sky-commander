@@ -380,7 +380,7 @@ function buildPhaseContext(
 **REGRA DE OURO**: Quando o piloto muda de fase (ex: de "Alinhado na Pista" para "Subida Inicial"), 
 você DEVE responder como o setor apropriado para a NOVA fase. 
 Exemplo: Se a fase é "Subida Inicial" e o setor esperado é "TWR" ou "DEP", 
-responda como Torre ou Decolagem, NÃO como se ainda estivesse no solo.
+responda como Torre ou Controle de Saída, NÃO como se ainda estivesse no solo.
 
 **VALIDAÇÃO DE FASE - REGRAS PARA O ATC/AVALIADOR:**
 
@@ -726,11 +726,11 @@ serve(async (req) => {
       
       const typeLabels: Record<string, string> = {
         'ATIS': 'ATIS',
-        'CLR': 'CLR (Clearance/Tráfego)',
+        'CLR': 'CLR (Tráfego/Delivery)',
         'GND': 'GND (Solo)',
         'TWR': 'TWR (Torre)',
         'DEP': 'DEP (Controle de Saída)',
-        'APP': 'APP (Aproximação)',
+        'APP': 'APP (Controle/Aproximação)',
         'CTR': 'CTR (Centro)'
       };
       
@@ -766,14 +766,16 @@ ${formatFrequencyList(arrivalFrequencies, flightData.arrivalIcao)}
 - NUNCA invente frequências. Use APENAS as listadas acima.
 - Se uma frequência está "INDISPONÍVEL", NÃO mande o piloto contatar esse setor.
 - Ao transferir o piloto, use a frequência EXATA da lista.
-- Exemplo: Se CTR está INDISPONÍVEL, mantenha em DEP ou informe "mantemos em frequência".
+- Se CTR está INDISPONÍVEL, mantenha em APP/Controle ou informe "mantemos em frequência".
+- Se DEL/Tráfego não existe, o Solo acumula a função de aprovação do plano de voo.
 
 ## TERMINOLOGIA OBRIGATÓRIA (ICAO Brasil)
-- GND = "Solo" (Ground)
-- TWR = "Torre" (Tower)
-- DEP = "Controle de Saída" ou "Controle ${flightData.departureIcao.slice(2)}" (NUNCA use "Decolagem")
-- APP = "Aproximação" (Approach)
-- CTR = "Centro" (Center)
+- DEL = "Tráfego" (Delivery) - aprovação de planos de voo
+- GND = "Solo" (Ground) - pushback, acionamento, táxi
+- TWR = "Torre" (Tower) - decolagens, pousos, cruzamento de pista
+- DEP/APP = "Controle [cidade]" ou "Controle de Saída" (NUNCA use "Decolagem")
+- CTR = "Centro" (Center) - gerenciamento em rota
+- AFIS = "Rádio" - informações de aeródromo (não controla)
 `;
 
     if (selectedFrequency) {
